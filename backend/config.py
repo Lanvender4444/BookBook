@@ -1,7 +1,16 @@
 import os
+import platform
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# 书籍保存路径
+BOOKS_DIR = os.getenv("BOOKS_DIR", str(Path.home() / "BookBook"))
+
+def ensure_books_dir():
+    """确保书籍保存目录存在"""
+    Path(BOOKS_DIR).mkdir(parents=True, exist_ok=True)
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower()
 LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-4-20250514")
