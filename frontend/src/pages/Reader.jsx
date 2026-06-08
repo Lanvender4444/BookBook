@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -6,70 +6,111 @@ import rehypeHighlight from 'rehype-highlight'
 import 'highlight.js/styles/github.css'
 import '../styles/typora-reader.css'
 
+// ✅ Fix 5: 常量提到组件外，避免每次渲染重新创建对象
+const INDENT_MAP = {
+  1: 'pl-2',
+  2: 'pl-6',
+  3: 'pl-10',
+  4: 'pl-14',
+  5: 'pl-18',
+  6: 'pl-20'
+}
+
+const SIZE_MAP = {
+  1: 'text-sm font-semibold',
+  2: 'text-sm font-medium',
+  3: 'text-xs',
+  4: 'text-xs',
+  5: 'text-xs',
+  6: 'text-xs'
+}
+
+const getIndentClass = (level) => INDENT_MAP[level] || 'pl-2'
+const getFontSizeClass = (level) => SIZE_MAP[level] || 'text-xs'
+
+// 提取标题文本（统一逻辑，供 h1/h2/h3 共用）
+const extractText = (children) => {
+  if (typeof children === 'string') return children
+  if (Array.isArray(children)) return children.join('')
+  return ''
+}
+
 function Reader() {
   const { id } = useParams()
   const [book, setBook] = useState(null)
   const [content, setContent] = useState('')
-  const [headings, setHeadings] = useState([])
   const [activeId, setActiveId] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
+  // ✅ Fix 2: ticking 用 ref 存，避免 observer 重建时状态丢失
+  const tickingRef = useRef(false)
+
+  // ✅ Fix 4: 两个 fetch 并行执行
   useEffect(() => {
+    const fetchBook = async () => {
+      try {
+        const [bookRes, exportRes] = await Promise.all([
+          fetch(`/api/books/${id}`),
+          fetch(`/api/books/${id}/export?format=markdown`)
+        ])
+        const [data, exportData] = await Promise.all([
+          bookRes.json(),
+          exportRes.json()
+        ])
+        setBook(data)
+        setContent(exportData.content)
+      } catch (error) {
+        console.error('Error fetching book:', error)
+      }
+    }
+
     fetchBook()
   }, [id])
 
-  const fetchBook = async () => {
-    try {
-      const response = await fetch(`/api/books/${id}`)
-      const data = await response.json()
-      setBook(data)
-      
-      const exportResponse = await fetch(`/api/books/${id}/export?format=markdown`)
-      const exportData = await exportResponse.json()
-      setContent(exportData.content)
-    } catch (error) {
-      console.error('Error fetching book:', error)
-    }
-  }
-
   const headingsList = useMemo(() => {
     if (!content) return []
-    
+
     const lines = content.split('\n')
     const result = []
     let inCodeBlock = false
-    
+
     lines.forEach((line, index) => {
       if (line.trim().startsWith('```')) {
         inCodeBlock = !inCodeBlock
         return
       }
-      
       if (inCodeBlock) return
-      
+
       const match = line.match(/^(#{1,6})\s+(.+)/)
       if (match) {
         const level = match[1].length
         const text = match[2].trim()
-        const id = `heading-${index}`
-        result.push({ id, level, text, line: index })
+        const headingId = `heading-${index}`
+        result.push({ id: headingId, level, text, line: index })
       }
     })
-    
+
     return result
   }, [content])
 
+  // ✅ Fix 1: O(1) 查找，避免 O(n²) 的 findIndex
+  const headingMap = useMemo(() => {
+    const map = new Map()
+    headingsList.forEach((h) => map.set(h.text, h.id))
+    return map
+  }, [headingsList])
+
   useEffect(() => {
     if (headingsList.length === 0) return
-    
+
     const mainContent = document.querySelector('main')
     if (!mainContent) return
-    
-    let ticking = false
-    
+
     const observer = new IntersectionObserver(
       (entries) => {
-        if (!ticking) {
+        // ✅ Fix 2: 使用 ref 存 ticking，不受 observer 重建影响
+        if (!tickingRef.current) {
+          tickingRef.current = true
           window.requestAnimationFrame(() => {
             for (const entry of entries) {
               if (entry.isIntersecting) {
@@ -77,30 +118,30 @@ function Reader() {
                 break
               }
             }
-            ticking = false
+            tickingRef.current = false
           })
-          ticking = true
         }
       },
-      { 
+      {
         root: mainContent,
         rootMargin: '-15% 0px -75% 0px',
         threshold: 0
       }
     )
-    
+
     const headingElements = headingsList
       .map(({ id }) => document.getElementById(id))
       .filter(Boolean)
-    
+
     headingElements.forEach((el) => observer.observe(el))
-    
+
     return () => {
       headingElements.forEach((el) => observer.unobserve(el))
+      observer.disconnect()
     }
   }, [headingsList])
 
-  const scrollToHeading = (headingId) => {
+  const scrollToHeading = useCallback((headingId) => {
     setActiveId(headingId)
     const el = document.getElementById(headingId)
     if (el) {
@@ -113,13 +154,13 @@ function Reader() {
         mainEl.scrollTo({ top: offsetTop, behavior: 'smooth' })
       }
     }
-  }
+  }, [])
 
-  const handleExport = async () => {
+  const handleExport = useCallback(async () => {
     try {
       const response = await fetch(`/api/books/${id}/export?format=markdown`)
       const data = await response.json()
-      
+
       const blob = new Blob([data.content], { type: 'text/markdown' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -130,31 +171,51 @@ function Reader() {
     } catch (error) {
       console.error('Error exporting book:', error)
     }
-  }
+  }, [id, book])
 
-  const getIndentClass = (level) => {
-    const indentMap = {
-      1: 'pl-2',
-      2: 'pl-6',
-      3: 'pl-10',
-      4: 'pl-14',
-      5: 'pl-18',
-      6: 'pl-20'
-    }
-    return indentMap[level] || 'pl-2'
-  }
+  // ✅ Fix 1 & 3: 统一文本提取，用 Map O(1) 查找，不再用 Math.random()
+  const makeHeadingComponent = useCallback(
+    (Tag) =>
+      ({ node, children, ...props }) => {
+        const text = extractText(children)
+        const headingId = headingMap.get(text)
+        // 找不到时用稳定的文本派生 ID，不用随机数
+        const stableId = headingId ?? `h-${text.replace(/\s+/g, '-').toLowerCase().slice(0, 32)}`
+        return (
+          <Tag id={stableId} {...props}>
+            {children}
+          </Tag>
+        )
+      },
+    [headingMap]
+  )
 
-  const getFontSizeClass = (level) => {
-    const sizeMap = {
-      1: 'text-sm font-semibold',
-      2: 'text-sm font-medium',
-      3: 'text-xs',
-      4: 'text-xs',
-      5: 'text-xs',
-      6: 'text-xs'
-    }
-    return sizeMap[level] || 'text-xs'
-  }
+  const markdownComponents = useMemo(
+    () => ({
+      h1: makeHeadingComponent('h1'),
+      h2: makeHeadingComponent('h2'),
+      h3: makeHeadingComponent('h3'),
+      code: ({ node, inline, className, children, ...props }) => {
+        const match = /language-(\w+)/.exec(className || '')
+        const lang = match ? match[1] : ''
+
+        if (inline) {
+          return <code className="inline-code" {...props}>{children}</code>
+        }
+        return (
+          <div className="code-block-wrapper">
+            {lang && <div className="code-lang-label">{lang}</div>}
+            <pre className={`language-${lang || 'text'}`}>
+              <code className={`language-${lang || 'text'}`} {...props}>
+                {children}
+              </code>
+            </pre>
+          </div>
+        )
+      }
+    }),
+    [makeHeadingComponent]
+  )
 
   if (!book) {
     return (
@@ -167,11 +228,15 @@ function Reader() {
   return (
     <div className="flex h-screen bg-white">
       {/* 左侧目录栏 */}
-      <aside className={`${sidebarOpen ? 'w-72' : 'w-0'} bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden flex flex-col`}>
+      <aside
+        className={`${
+          sidebarOpen ? 'w-72' : 'w-0'
+        } bg-gray-50 border-r border-gray-200 transition-all duration-300 overflow-hidden flex flex-col`}
+      >
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-gray-800 truncate">{book.title}</h2>
-            <button 
+            <button
               onClick={() => setSidebarOpen(false)}
               className="text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0"
             >
@@ -182,7 +247,7 @@ function Reader() {
           </div>
           <p className="text-xs text-gray-500 mt-1 truncate">{book.description}</p>
         </div>
-        
+
         {/* 目录树 */}
         <nav className="flex-1 overflow-y-auto p-3">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3 px-2">
@@ -193,13 +258,11 @@ function Reader() {
               <li key={heading.id}>
                 <button
                   onClick={() => scrollToHeading(heading.id)}
-                  className={`w-full text-left py-1.5 px-2 rounded transition-colors ${
-                    getIndentClass(heading.level)
-                  } ${
-                    getFontSizeClass(heading.level)
-                  } ${
-                    activeId === heading.id 
-                      ? 'bg-indigo-100 text-indigo-700 border-l-2 border-indigo-500' 
+                  className={`w-full text-left py-1.5 px-2 rounded transition-colors ${getIndentClass(
+                    heading.level
+                  )} ${getFontSizeClass(heading.level)} ${
+                    activeId === heading.id
+                      ? 'bg-indigo-100 text-indigo-700 border-l-2 border-indigo-500'
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                   }`}
                   title={heading.text}
@@ -210,7 +273,7 @@ function Reader() {
             ))}
           </ul>
         </nav>
-        
+
         {/* 底部按钮 */}
         <div className="p-3 border-t border-gray-200">
           <button
@@ -232,7 +295,7 @@ function Reader() {
           <div className="max-w-4xl mx-auto px-8 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               {!sidebarOpen && (
-                <button 
+                <button
                   onClick={() => setSidebarOpen(true)}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -254,43 +317,7 @@ function Reader() {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
-              components={{
-                h1: ({node, ...props}) => {
-                  const idx = headingsList.findIndex(h => h.text === props.children?.[0])
-                  const headingId = idx >= 0 ? headingsList[idx].id : `h-${Math.random().toString(36).substr(2, 9)}`
-                  return <h1 id={headingId} {...props} />
-                },
-                h2: ({node, ...props}) => {
-                  const text = typeof props.children === 'string' ? props.children : 
-                               Array.isArray(props.children) ? props.children.join('') : ''
-                  const idx = headingsList.findIndex(h => h.text === text)
-                  const headingId = idx >= 0 ? headingsList[idx].id : `h-${Math.random().toString(36).substr(2, 9)}`
-                  return <h2 id={headingId} {...props} />
-                },
-                h3: ({node, ...props}) => {
-                  const text = typeof props.children === 'string' ? props.children : 
-                               Array.isArray(props.children) ? props.children.join('') : ''
-                  const idx = headingsList.findIndex(h => h.text === text)
-                  const headingId = idx >= 0 ? headingsList[idx].id : `h-${Math.random().toString(36).substr(2, 9)}`
-                  return <h3 id={headingId} {...props} />
-                },
-                code: ({node, inline, className, children, ...props}) => {
-                  const match = /language-(\w+)/.exec(className || '')
-                  const lang = match ? match[1] : ''
-                  
-                  if (inline) {
-                    return <code className="inline-code" {...props}>{children}</code>
-                  }
-                  return (
-                    <div className="code-block-wrapper">
-                      {lang && <div className="code-lang-label">{lang}</div>}
-                      <pre className={`language-${lang || 'text'}`}>
-                        <code className={`language-${lang || 'text'}`} {...props}>{children}</code>
-                      </pre>
-                    </div>
-                  )
-                }
-              }}
+              components={markdownComponents}
             >
               {content}
             </ReactMarkdown>
