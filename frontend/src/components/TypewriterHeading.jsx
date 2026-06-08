@@ -5,83 +5,109 @@ import { useState, useEffect, useRef } from 'react';
  * 参考实现: .review/front_type.md
  * 
  * 特性:
- * - 逐字生成打字机效果
+ * - 逐字生成打字机效果，每字之间速度随机（0.5x ~ 1.5x）
+ * - 打完自动退格，退完重新打字，循环往复
  * - 使用 Web Audio API 动态合成微弱打字声（无需外部音频文件）
  * - 使用 JetBrains Mono / Share Tech Mono 开源等宽字体
  * - 带闪烁光标动画
  */
 export default function TypewriterHeading({ text, speed = 100, className = '' }) {
   const [displayedText, setDisplayedText] = useState('');
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isComplete, setIsComplete] = useState(false);
+  const modeRef = useRef('typing'); // 'typing' | 'deleting'
+  const indexRef = useRef(0);
   const audioCtxRef = useRef(null);
+  const runningRef = useRef(true);
 
-  // 初始化 Web Audio API 上下文
+  // 生成随机延迟（0.5x ~ 1.5x speed）
+  const getRandomDelay = () => speed * (0.5 + Math.random());
+
   useEffect(() => {
+    runningRef.current = true;
+
+    // 初始化 Web Audio API 上下文
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (AudioContext) {
       audioCtxRef.current = new AudioContext();
     }
-    return () => {
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-        audioCtxRef.current.close();
+
+    // 播放微弱打字声 / 退格声
+    const playTypeSound = (isDelete = false) => {
+      if (!audioCtxRef.current) return;
+      try {
+        const ctx = audioCtxRef.current;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        // 退格时音调略低，打字时略高
+        const baseFreq = isDelete ? 400 : 600;
+        osc.type = 'square';
+        osc.frequency.value = baseFreq + Math.random() * 800;
+        gain.gain.value = 0.03; // 音量 3%
+        osc.start(ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+        osc.stop(ctx.currentTime + 0.05);
+      } catch (e) {
+        // 浏览器自动播放策略限制时静默处理
       }
     };
-  }, []);
 
-  // 播放微弱打字声（极短促的机械键盘敲击声）
-  const playTypeSound = () => {
-    if (!audioCtxRef.current) return;
-    try {
-      const ctx = audioCtxRef.current;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      // 模拟机械键盘敲击声：方波 + 快速衰减
-      osc.type = 'square';
-      osc.frequency.value = 600 + Math.random() * 800; // 600-1400Hz 随机
-      gain.gain.value = 0.03; // 音量 3%，非常微弱
-      
-      osc.start(ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-      osc.stop(ctx.currentTime + 0.05);
-    } catch (e) {
-      // 浏览器自动播放策略限制时静默处理
-    }
-  };
+    // 状态机主循环：typing → deleting → typing → ...
+    const loop = () => {
+      if (!runningRef.current || !text) return;
 
-  useEffect(() => {
-    if (currentIndex < text.length) {
-      const timeoutId = setTimeout(() => {
-        const nextChar = text[currentIndex];
-        setDisplayedText((prev) => prev + nextChar);
-        
-        // 空格通常不发声，体验更好
-        if (nextChar !== ' ') {
-          playTypeSound();
+      if (modeRef.current === 'typing') {
+        if (indexRef.current < text.length) {
+          const nextChar = text[indexRef.current];
+          setDisplayedText(prev => {
+            if (!runningRef.current) return prev;
+            return prev + nextChar;
+          });
+          if (nextChar !== ' ') {
+            playTypeSound(false);
+          }
+          indexRef.current++;
+          setTimeout(loop, getRandomDelay());
+        } else {
+          // 打完了，停顿 2 秒后进入退格
+          modeRef.current = 'deleting';
+          setTimeout(loop, 2000);
         }
-        
-        setCurrentIndex((prev) => prev + 1);
-      }, speed);
+      } else {
+        // deleting
+        if (indexRef.current > 0) {
+          setDisplayedText(prev => {
+            if (!runningRef.current) return prev;
+            return prev.slice(0, -1);
+          });
+          playTypeSound(true);
+          indexRef.current--;
+          setTimeout(loop, getRandomDelay());
+        } else {
+          // 退完了，停顿 0.8 秒后重新打字
+          modeRef.current = 'typing';
+          setTimeout(loop, 800);
+        }
+      }
+    };
 
-      return () => clearTimeout(timeoutId);
-    } else {
-      setIsComplete(true);
-    }
-  }, [currentIndex, text, speed]);
-
-  // text 变化时重置动画
-  useEffect(() => {
+    // 重置状态并从 0 开始
+    modeRef.current = 'typing';
+    indexRef.current = 0;
     setDisplayedText('');
-    setCurrentIndex(0);
-    setIsComplete(false);
-  }, [text]);
+
+    // 开始主循环
+    const initialDelay = getRandomDelay();
+    const timeoutId = setTimeout(loop, initialDelay);
+
+    return () => {
+      runningRef.current = false;
+      clearTimeout(timeoutId);
+    };
+  }, [text, speed]);
 
   return (
-    <h1 
+    <h1
       className={`typewriter-cursor ${className}`}
       style={{
         fontFamily: "'JetBrains Mono', 'Share Tech Mono', monospace",
@@ -89,11 +115,12 @@ export default function TypewriterHeading({ text, speed = 100, className = '' })
         fontWeight: 'bold',
         display: 'inline-block',
         paddingRight: '4px',
-        whiteSpace: 'pre-wrap'
+        whiteSpace: 'pre-wrap',
+        minHeight: '2.5rem' // 保持容器高度稳定
       }}
     >
       {displayedText}
-      {!isComplete && '\u00A0'}
+      {'\u00A0'}
     </h1>
   );
 }
