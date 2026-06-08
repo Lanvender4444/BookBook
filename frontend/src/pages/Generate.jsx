@@ -47,7 +47,8 @@ function Generate() {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6))
+              const jsonStr = line.slice(6).trim()
+              const data = JSON.parse(jsonStr)
               
               if (data.type === 'outline') {
                 setOutline(data.data)

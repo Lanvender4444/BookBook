@@ -33,7 +33,7 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
             generation_status.set_status("current", {"step": "outline", "progress": 0})
             
             outline = await generate_outline(request.prompt, request.requirements)
-            yield f"data: {json.dumps({'type': 'outline', 'data': outline})}\n\n"
+            yield {"event": "outline", "data": json.dumps({"type": "outline", "data": outline})}
             
             chapters = []
             total_chapters = len(outline['chapters'])
@@ -49,7 +49,7 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
                 content = await generate_chapter(outline, chapter, i)
                 chapters.append(content)
                 
-                yield f"data: {json.dumps({'type': 'chapter', 'index': i, 'data': content})}\n\n"
+                yield {"event": "chapter", "data": json.dumps({"type": "chapter", "index": i, "data": content})}
             
             user_id = generate_user_id()
             book_id = save_book(db, outline, chapters, user_id)
@@ -60,10 +60,10 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
                 "progress": 100
             })
             
-            yield f"data: {json.dumps({'type': 'done', 'book_id': book_id})}\n\n"
+            yield {"event": "done", "data": json.dumps({"type": "done", "book_id": book_id})}
             
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield {"event": "error", "data": json.dumps({"type": "error", "message": str(e)})}
     
     return EventSourceResponse(event_generator())
 

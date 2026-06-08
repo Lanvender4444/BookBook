@@ -1,7 +1,5 @@
 import json
 import httpx
-import anthropic
-import google.generativeai as genai
 from config import (
     LLM_PROVIDER, LLM_MODEL,
     ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY,
@@ -16,6 +14,7 @@ class BaseLLMService:
 
 class AnthropicService(BaseLLMService):
     def __init__(self):
+        import anthropic
         self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     
     async def generate(self, system_prompt: str, user_message: str, max_tokens: int = 4096) -> str:
@@ -55,12 +54,17 @@ class OpenAICompatibleService(BaseLLMService):
 
 class GeminiService(BaseLLMService):
     def __init__(self):
-        genai.configure(api_key=GEMINI_API_KEY)
+        from google import genai
+        self.client = genai.Client(api_key=GEMINI_API_KEY)
     
     async def generate(self, system_prompt: str, user_message: str, max_tokens: int = 4096) -> str:
-        model = genai.GenerativeModel(LLM_MODEL)
+        from google.genai import types
         full_prompt = f"[System]: {system_prompt}\n\n[User]: {user_message}"
-        response = await model.generate_content_async(full_prompt)
+        response = await self.client.aio.models.generate_content(
+            model=LLM_MODEL,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(max_output_tokens=max_tokens)
+        )
         return response.text
 
 def get_llm_service() -> BaseLLMService:
