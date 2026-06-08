@@ -3,6 +3,55 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import OutlineTree from '../components/OutlineTree'
 import ProgressBar from '../components/ProgressBar'
 
+const LANGUAGES = {
+  "zh-CN": "中文（简体）",
+  "zh-TW": "中文（繁體）",
+  "en": "English",
+  "ja": "日本語",
+  "ko": "한국어",
+  "es": "español",
+  "fr": "français",
+  "de": "Deutsch",
+  "it": "italiano",
+  "pt-BR": "português (Brasil)",
+  "ru": "русский",
+  "ar": "العربية",
+  "hi": "हिन्दी",
+  "th": "ไทย",
+  "vi": "Tiếng Việt",
+  "id": "Indonesia",
+  "ms": "Melayu",
+  "tr": "Türkçe",
+  "pl": "polski",
+  "nl": "Nederlands",
+  "sv": "svenska",
+  "da": "dansk",
+  "fi": "suomi",
+  "nb": "norsk bokmål",
+  "cs": "čeština",
+  "sk": "slovenčina",
+  "hu": "magyar",
+  "ro": "română",
+  "bg": "български",
+  "uk": "українська",
+  "el": "Ελληνικά",
+  "he": "עברית",
+  "bn": "বাংলা",
+  "ta": "தமிழ்",
+  "te": "తెలుగు",
+  "ml": "മലയാളം",
+  "kn": "ಕನ್ನಡ",
+  "ca": "català",
+  "hr": "hrvatski",
+  "sl": "slovenščina",
+  "et": "eesti",
+  "lv": "latviešu",
+  "lt": "lietuvių",
+  "fil": "Filipino",
+  "sw": "Kiswahili",
+  "af": "Afrikaans"
+}
+
 function Generate() {
   const [searchParams] = useSearchParams()
   const [prompt, setPrompt] = useState(searchParams.get('prompt') || '')
@@ -10,7 +59,8 @@ function Generate() {
     difficulty: searchParams.get('difficulty') || '中等',
     word_count: searchParams.get('word_count') || '5000',
     chapter_count: searchParams.get('chapter_count') || '5-8',
-    style: searchParams.get('style') || '科普向'
+    style: searchParams.get('style') || '科普向',
+    language: searchParams.get('language') || 'zh-CN'
   })
   const [outline, setOutline] = useState(null)
   const [chapters, setChapters] = useState([])
@@ -21,12 +71,10 @@ function Generate() {
   const [statusMessage, setStatusMessage] = useState('')
   const navigate = useNavigate()
   
-  // 使用 ref 存储 abort controller 和组件是否挂载
   const abortControllerRef = useRef(null)
   const isMountedRef = useRef(true)
   const generatingRef = useRef(false)
 
-  // 组件卸载时清理
   useEffect(() => {
     return () => {
       isMountedRef.current = false
@@ -36,7 +84,6 @@ function Generate() {
     }
   }, [])
 
-  // 从 URL 参数恢复状态
   useEffect(() => {
     const savedHistoryId = searchParams.get('history_id')
     if (savedHistoryId) {
@@ -45,7 +92,6 @@ function Generate() {
   }, [searchParams])
 
   const reconnectToTask = async (taskId) => {
-    // 重新连接到后台任务
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
@@ -107,7 +153,6 @@ function Generate() {
               handleErrorEvent(data.data)
             }
           } catch (e) {
-            // 忽略解析错误
           }
         }
       }
@@ -128,7 +173,6 @@ function Generate() {
       
       if (data.chapter_content) {
         setChapters(prev => {
-          // 避免重复添加
           if (prev.some(c => c.index === data.current_chapter - 1)) {
             return prev
           }
@@ -199,12 +243,10 @@ function Generate() {
   }
 
   const handleCancel = async () => {
-    // 取消前端请求
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
     
-    // 通知后端取消
     if (historyId) {
       try {
         await fetch(`/api/generate/${historyId}/cancel`, { method: 'POST' })
@@ -280,6 +322,20 @@ function Generate() {
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
               disabled={generating}
             />
+          </div>
+          
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">生成语言</label>
+            <select
+              value={requirements.language}
+              onChange={(e) => setRequirements({...requirements, language: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              disabled={generating}
+            >
+              {Object.entries(LANGUAGES).map(([code, name]) => (
+                <option key={code} value={code}>{name}</option>
+              ))}
+            </select>
           </div>
         </div>
         

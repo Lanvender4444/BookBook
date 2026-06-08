@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import BookCard from '../components/BookCard'
+import ConfirmModal from '../components/ConfirmModal'
 
 function Library() {
   const [books, setBooks] = useState([])
@@ -8,6 +9,7 @@ function Library() {
   const [newDir, setNewDir] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [userInfo, setUserInfo] = useState(null)
+  const [deleteModal, setDeleteModal] = useState({ open: false, bookId: null })
 
   useEffect(() => {
     fetchBooks()
@@ -63,15 +65,18 @@ function Library() {
     }
   }
 
-  const handleDelete = async (bookId) => {
-    if (confirm('确定要删除这本书吗？')) {
-      try {
-        await fetch(`/api/books/${bookId}`, { method: 'DELETE' })
-        fetchBooks()
-      } catch (error) {
-        console.error('Error deleting book:', error)
-      }
+  const handleDelete = (bookId) => {
+    setDeleteModal({ open: true, bookId })
+  }
+
+  const confirmDelete = async () => {
+    try {
+      await fetch(`/api/books/${deleteModal.bookId}`, { method: 'DELETE' })
+      fetchBooks()
+    } catch (error) {
+      console.error('Error deleting book:', error)
     }
+    setDeleteModal({ open: false, bookId: null })
   }
 
   const filteredBooks = books.filter(book => {
@@ -167,6 +172,17 @@ function Library() {
           暂无书籍，去生成一本吧！
         </div>
       )}
+      
+      <ConfirmModal
+        isOpen={deleteModal.open}
+        title="删除书籍"
+        message="确定要删除这本书吗？此操作将同时删除本地文件，不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        danger={true}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteModal({ open: false, bookId: null })}
+      />
     </div>
   )
 }

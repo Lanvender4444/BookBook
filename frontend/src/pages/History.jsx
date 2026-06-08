@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import ConfirmModal from '../components/ConfirmModal'
 
 function History() {
   const [histories, setHistories] = useState([])
@@ -7,13 +8,13 @@ function History() {
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState(null)
   const [taskProgress, setTaskProgress] = useState({})
+  const [deleteModal, setDeleteModal] = useState({ open: false, historyId: null })
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchHistories()
   }, [filter])
 
-  // 定期刷新进行中任务的状态
   useEffect(() => {
     const interval = setInterval(() => {
       const pendingHistories = histories.filter(h => h.status === 'pending')
@@ -33,8 +34,6 @@ function History() {
           ...prev,
           [historyId]: data.task_status
         }))
-        
-        // 如果任务完成，刷新列表
         if (data.task_status.status === 'completed' || data.task_status.status === 'failed') {
           fetchHistories()
         }
@@ -60,16 +59,21 @@ function History() {
     }
   }
 
-  const handleDelete = async (e, historyId) => {
+  const handleDeleteClick = (e, historyId) => {
     e.stopPropagation()
-    if (confirm('确定要删除这条记录吗？')) {
-      try {
-        await fetch(`/api/generate/history/${historyId}`, { method: 'DELETE' })
-        fetchHistories()
-      } catch (error) {
-        console.error('Error deleting history:', error)
-      }
+    setDeleteModal({ open: true, historyId: historyId })
+  }
+
+  const confirmDelete = async () => {
+    const id = deleteModal.historyId
+    if (!id) return
+    try {
+      await fetch(`/api/generate/history/${id}`, { method: 'DELETE' })
+      fetchHistories()
+    } catch (error) {
+      console.error('Error deleting history:', error)
     }
+    setDeleteModal({ open: false, historyId: null })
   }
 
   const handleViewBook = (e, bookId) => {
@@ -86,14 +90,14 @@ function History() {
       difficulty: history.requirements?.difficulty || '中等',
       word_count: history.requirements?.word_count || '5000',
       chapter_count: history.requirements?.chapter_count || '5-8',
-      style: history.requirements?.style || '科普向'
+      style: history.requirements?.style || '科普向',
+      language: history.requirements?.language || 'zh-CN'
     })
     navigate(`/generate?${params.toString()}`)
   }
 
   const handleViewProgress = (e, history) => {
     e.stopPropagation()
-    // 跳转到生成页面并重新连接到后台任务
     navigate(`/generate?history_id=${history.id}`)
   }
 
@@ -138,7 +142,6 @@ function History() {
         </button>
       </div>
 
-      {/* 筛选按钮 */}
       <div className="flex space-x-2 mb-6">
         {[
           { key: 'all', label: '全部' },
@@ -161,7 +164,6 @@ function History() {
         ))}
       </div>
 
-      {/* 列表 */}
       {loading ? (
         <div className="text-center py-12 text-gray-500">加载中...</div>
       ) : histories.length === 0 ? (
@@ -184,16 +186,16 @@ function History() {
             return (
               <div 
                 key={history.id} 
-                className={`bg-white rounded-lg border transition-all cursor-pointer ${
+                className={`bg-white rounded-lg border transition-all ${
                   isExpanded 
                     ? 'shadow-md border-indigo-200' 
                     : 'shadow-sm border-gray-100 hover:shadow-md hover:border-gray-200'
                 }`}
-                onClick={() => toggleExpand(history.id)}
               >
-                {/* 主体行 */}
-                <div className="p-4 flex items-center gap-4">
-                  {/* 状态和标题 */}
+                <div 
+                  className="p-4 flex items-center gap-4 cursor-pointer select-none"
+                  onClick={() => toggleExpand(history.id)}
+                >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
@@ -204,18 +206,19 @@ function History() {
                     <p className="text-gray-800 font-medium truncate">{history.prompt}</p>
                   </div>
 
-                  {/* 操作按钮 */}
-                  <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {history.status === 'pending' && (
                       <>
                         <button
+                          type="button"
                           onClick={(e) => handleViewProgress(e, history)}
                           className="px-3 py-1.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-md"
                         >
                           查看进度
                         </button>
                         <button
-                          onClick={(e) => handleDelete(e, history.id)}
+                          type="button"
+                          onClick={(e) => handleDeleteClick(e, history.id)}
                           className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-md"
                         >
                           取消
@@ -224,6 +227,7 @@ function History() {
                     )}
                     {history.status === 'completed' && history.book_id && (
                       <button
+                        type="button"
                         onClick={(e) => handleViewBook(e, history.book_id)}
                         className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
                       >
@@ -232,6 +236,7 @@ function History() {
                     )}
                     {(history.status === 'failed' || history.status === 'deleted') && (
                       <button
+                        type="button"
                         onClick={(e) => handleContinueGenerate(e, history)}
                         className="px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-md"
                       >
@@ -239,8 +244,9 @@ function History() {
                       </button>
                     )}
                     <button
-                      onClick={(e) => handleDelete(e, history.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 rounded-md"
+                      type="button"
+                      onClick={(e) => handleDeleteClick(e, history.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md"
                       title="删除"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -249,7 +255,6 @@ function History() {
                     </button>
                   </div>
 
-                  {/* 展开箭头 */}
                   <svg 
                     className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     fill="none" 
@@ -260,10 +265,8 @@ function History() {
                   </svg>
                 </div>
 
-                {/* 展开内容 */}
                 {isExpanded && (
-                  <div className="px-4 pb-4 border-t border-gray-100 pt-4" onClick={(e) => e.stopPropagation()}>
-                    {/* 基本信息 */}
+                  <div className="px-4 pb-4 border-t border-gray-100 pt-4">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
                       <div>
                         <span className="text-gray-500">创建时间</span>
@@ -289,11 +292,10 @@ function History() {
                       )}
                     </div>
 
-                    {/* 大纲预览 */}
                     {history.outline && (
                       <div className="bg-gray-50 rounded-lg p-4">
                         <h4 className="font-medium text-gray-700 mb-2">
-                          📋 大纲：{history.outline.title}
+                          大纲：{history.outline.title}
                         </h4>
                         {history.outline.description && (
                           <p className="text-sm text-gray-600 mb-3">{history.outline.description}</p>
@@ -317,14 +319,12 @@ function History() {
                       </div>
                     )}
 
-                    {/* 错误信息 */}
                     {history.error_message && (
                       <div className="mt-3 p-3 bg-red-50 rounded-lg">
-                        <p className="text-sm text-red-600">❌ {history.error_message}</p>
+                        <p className="text-sm text-red-600">{history.error_message}</p>
                       </div>
                     )}
 
-                    {/* 实时进度（仅对进行中的任务） */}
                     {history.status === 'pending' && taskProgress[history.id] && (
                       <div className="mt-3 p-3 bg-blue-50 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
@@ -334,7 +334,7 @@ function History() {
                         <p className="text-sm text-blue-600">
                           {taskProgress[history.id].progress?.message || '处理中...'}
                         </p>
-                        {taskProgress[history.id].progress?.current_chapter && (
+                        {taskProgress[history.id].progress?.current_chapter > 0 && (
                           <div className="mt-2">
                             <div className="flex justify-between text-xs text-blue-500 mb-1">
                               <span>第 {taskProgress[history.id].progress.current_chapter} 章</span>
@@ -359,6 +359,17 @@ function History() {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteModal.open}
+        title="删除记录"
+        message="确定要删除这条记录吗？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        danger={true}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteModal({ open: false, historyId: null })}
+      />
     </div>
   )
 }

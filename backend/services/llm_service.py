@@ -129,18 +129,75 @@ def get_llm_service() -> BaseLLMService:
 
 llm_service = get_llm_service()
 
+LANGUAGE_NAMES = {
+    "zh-CN": "简体中文",
+    "zh-TW": "繁体中文",
+    "en": "English",
+    "ja": "日本語",
+    "ko": "한국어",
+    "es": "español",
+    "fr": "français",
+    "de": "Deutsch",
+    "it": "italiano",
+    "pt-BR": "português (Brasil)",
+    "ru": "русский",
+    "ar": "العربية",
+    "hi": "हिन्दी",
+    "th": "ไทย",
+    "vi": "Tiếng Việt",
+    "id": "Indonesia",
+    "ms": "Melayu",
+    "tr": "Türkçe",
+    "pl": "polski",
+    "nl": "Nederlands",
+    "sv": "svenska",
+    "da": "dansk",
+    "fi": "suomi",
+    "nb": "norsk bokmål",
+    "cs": "čeština",
+    "sk": "slovenčina",
+    "hu": "magyar",
+    "ro": "română",
+    "bg": "български",
+    "uk": "українська",
+    "el": "Ελληνικά",
+    "he": "עברית",
+    "bn": "বাংলা",
+    "ta": "தமிழ்",
+    "te": "తెలుగు",
+    "ml": "മലയാളം",
+    "kn": "ಕನ್ನಡ",
+    "ca": "català",
+    "hr": "hrvatski",
+    "sl": "slovenščina",
+    "et": "eesti",
+    "lv": "latviešu",
+    "lt": "lietuvių",
+    "fil": "Filipino",
+    "sw": "Kiswahili",
+    "af": "Afrikaans"
+}
+
+def _get_language_name(code: str) -> str:
+    return LANGUAGE_NAMES.get(code, "简体中文")
+
 def generate_outline_sync(prompt: str, requirements: dict) -> dict:
     """同步版本的大纲生成"""
-    system_prompt = """你是一个专业的电子书大纲生成器。根据用户需求和生成要求，生成结构化的JSON格式大纲。
+    lang_code = requirements.get('language', 'zh-CN')
+    lang_name = _get_language_name(lang_code)
     
+    system_prompt = f"""你是一个专业的电子书大纲生成器。根据用户需求和生成要求，生成结构化的JSON格式大纲。
+
+重要：书籍内容必须使用 {lang_name} 撰写，所有标题和描述都必须是 {lang_name}。
+
 返回格式（必须严格遵循JSON格式，不要包含其他文字）：
-{
-    "title": "书籍标题",
-    "description": "书籍简介",
+{{
+    "title": "书籍标题（{lang_name}）",
+    "description": "书籍简介（{lang_name}）",
     "chapters": [
-        {"title": "章节标题", "summary": "章节概要"}
+        {{"title": "章节标题（{lang_name}）", "summary": "章节概要（{lang_name}）"}}
     ]
-}"""
+}}"""
     
     user_message = f"""用户需求：{prompt}
 
@@ -149,6 +206,7 @@ def generate_outline_sync(prompt: str, requirements: dict) -> dict:
 - 目标字数：{requirements.get('word_count', '5000')}字
 - 章节数量：{requirements.get('chapter_count', '5-8')}
 - 风格：{requirements.get('style', '科普向')}
+- 语言：{lang_name}
 
 请生成详细的大纲，只返回JSON格式内容。"""
     
@@ -171,7 +229,8 @@ def generate_chapter_sync(outline: dict, chapter: dict, chapter_index: int) -> s
 要求：
 - 内容详实，逻辑清晰
 - 语言流畅，符合目标读者水平
-- 字数控制在合理范围内"""
+- 字数控制在合理范围内
+- 保持与书籍标题相同的语言"""
 
     user_message = f"""章节标题：{chapter['title']}
 章节概要：{chapter['summary']}
@@ -182,16 +241,21 @@ def generate_chapter_sync(outline: dict, chapter: dict, chapter_index: int) -> s
     return content
 
 async def generate_outline(prompt: str, requirements: dict) -> dict:
-    system_prompt = """你是一个专业的电子书大纲生成器。根据用户需求和生成要求，生成结构化的JSON格式大纲。
+    lang_code = requirements.get('language', 'zh-CN')
+    lang_name = _get_language_name(lang_code)
     
+    system_prompt = f"""你是一个专业的电子书大纲生成器。根据用户需求和生成要求，生成结构化的JSON格式大纲。
+
+重要：书籍内容必须使用 {lang_name} 撰写，所有标题和描述都必须是 {lang_name}。
+
 返回格式（必须严格遵循JSON格式，不要包含其他文字）：
-{
-    "title": "书籍标题",
-    "description": "书籍简介",
+{{
+    "title": "书籍标题（{lang_name}）",
+    "description": "书籍简介（{lang_name}）",
     "chapters": [
-        {"title": "章节标题", "summary": "章节概要"}
+        {{"title": "章节标题（{lang_name}）", "summary": "章节概要（{lang_name}）"}}
     ]
-}"""
+}}"""
     
     user_message = f"""用户需求：{prompt}
 
@@ -200,6 +264,7 @@ async def generate_outline(prompt: str, requirements: dict) -> dict:
 - 目标字数：{requirements.get('word_count', '5000')}字
 - 章节数量：{requirements.get('chapter_count', '5-8')}
 - 风格：{requirements.get('style', '科普向')}
+- 语言：{lang_name}
 
 请生成详细的大纲，只返回JSON格式内容。"""
     
@@ -221,7 +286,8 @@ async def generate_chapter(outline: dict, chapter: dict, chapter_index: int) -> 
 要求：
 - 内容详实，逻辑清晰
 - 语言流畅，符合目标读者水平
-- 字数控制在合理范围内"""
+- 字数控制在合理范围内
+- 保持与书籍标题相同的语言"""
 
     user_message = f"""章节标题：{chapter['title']}
 章节概要：{chapter['summary']}
