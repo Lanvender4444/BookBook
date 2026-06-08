@@ -1,8 +1,12 @@
 import { createContext, useContext, useState, useCallback } from 'react'
-import zhCN from './zh-CN.json'
-import en from './en.json'
 
-const translations = { 'zh-CN': zhCN, en }
+// 动态导入所有翻译文件
+const translations = {}
+const modules = import.meta.glob('./*.json', { eager: true })
+for (const path in modules) {
+  const code = path.replace(/^\.\//, '').replace(/\.json$/, '')
+  translations[code] = modules[path].default || modules[path]
+}
 
 const I18nContext = createContext()
 
