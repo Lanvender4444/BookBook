@@ -5,11 +5,44 @@ function History() {
   const [histories, setHistories] = useState([])
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [expandedId, setExpandedId] = useState(null)
+  const [taskProgress, setTaskProgress] = useState({})
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchHistories()
   }, [filter])
+
+  // 定期刷新进行中任务的状态
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const pendingHistories = histories.filter(h => h.status === 'pending')
+      if (pendingHistories.length > 0) {
+        pendingHistories.forEach(h => fetchTaskProgress(h.id))
+      }
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [histories])
+
+  const fetchTaskProgress = async (historyId) => {
+    try {
+      const response = await fetch(`/api/generate/history/${historyId}`)
+      const data = await response.json()
+      if (data.task_status) {
+        setTaskProgress(prev => ({
+          ...prev,
+          [historyId]: data.task_status
+        }))
+        
+        // 如果任务完成，刷新列表
+        if (data.task_status.status === 'completed' || data.task_status.status === 'failed') {
+          fetchHistories()
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching task progress:', error)
+    }
+  }
 
   const fetchHistories = async () => {
     setLoading(true)
@@ -27,7 +60,8 @@ function History() {
     }
   }
 
-  const handleDelete = async (historyId) => {
+  const handleDelete = async (e, historyId) => {
+    e.stopPropagation()
     if (confirm('确定要删除这条记录吗？')) {
       try {
         await fetch(`/api/generate/history/${historyId}`, { method: 'DELETE' })
@@ -38,14 +72,15 @@ function History() {
     }
   }
 
-  const handleViewBook = (bookId) => {
+  const handleViewBook = (e, bookId) => {
+    e.stopPropagation()
     if (bookId) {
       navigate(`/reader/${bookId}`)
     }
   }
 
-  const handleContinueGenerate = (history) => {
-    // 跳转到生成页并填充之前的参数
+  const handleContinueGenerate = (e, history) => {
+    e.stopPropagation()
     const params = new URLSearchParams({
       prompt: history.prompt,
       difficulty: history.requirements?.difficulty || '中等',
@@ -54,6 +89,16 @@ function History() {
       style: history.requirements?.style || '科普向'
     })
     navigate(`/generate?${params.toString()}`)
+  }
+
+  const handleViewProgress = (e, history) => {
+    e.stopPropagation()
+    // 跳转到生成页面并重新连接到后台任务
+    navigate(`/generate?history_id=${history.id}`)
+  }
+
+  const toggleExpand = (historyId) => {
+    setExpandedId(expandedId === historyId ? null : historyId)
   }
 
   const getStatusBadge = (status) => {
@@ -131,66 +176,55 @@ function History() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {histories.map((history) => {
             const statusInfo = getStatusBadge(history.status)
+            const isExpanded = expandedId === history.id
+            
             return (
               <div 
                 key={history.id} 
-                className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow"
+                className={`bg-white rounded-lg border transition-all cursor-pointer ${
+                  isExpanded 
+                    ? 'shadow-md border-indigo-200' 
+                    : 'shadow-sm border-gray-100 hover:shadow-md hover:border-gray-200'
+                }`}
+                onClick={() => toggleExpand(history.id)}
               >
-                <div className="flex items-start justify-between gap-4">
+                {/* 主体行 */}
+                <div className="p-4 flex items-center gap-4">
+                  {/* 状态和标题 */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
                         {statusInfo.icon} {statusInfo.text}
                       </span>
-                      <span className="text-xs text-gray-400">
-                        #{history.id}
-                      </span>
+                      <span className="text-xs text-gray-400">#{history.id}</span>
                     </div>
-                    
-                    <p className="text-gray-800 font-medium mb-2 line-clamp-2">
-                      {history.prompt}
-                    </p>
-                    
-                    {history.outline?.title && (
-                      <p className="text-sm text-gray-600 mb-2">
-                        📖 {history.outline.title}
-                      </p>
-                    )}
-                    
-                    <div className="flex items-center gap-4 text-xs text-gray-400">
-                      <span>创建: {formatDate(history.created_at)}</span>
-                      {history.completed_at && (
-                        <span>完成: {formatDate(history.completed_at)}</span>
-                      )}
-                      {history.requirements && (
-                        <span className="hidden sm:inline">
-                          {history.requirements.difficulty} · {history.requirements.word_count}字
-                        </span>
-                      )}
-                    </div>
-                    
-                    {history.error_message && (
-                      <p className="mt-2 text-sm text-red-500 bg-red-50 p-2 rounded">
-                        {history.error_message}
-                      </p>
-                    )}
+                    <p className="text-gray-800 font-medium truncate">{history.prompt}</p>
                   </div>
-                  
-                  <div className="flex items-center gap-2 flex-shrink-0">
+
+                  {/* 操作按钮 */}
+                  <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                     {history.status === 'pending' && (
-                      <button
-                        onClick={() => handleDelete(history.id)}
-                        className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-md"
-                      >
-                        取消
-                      </button>
+                      <>
+                        <button
+                          onClick={(e) => handleViewProgress(e, history)}
+                          className="px-3 py-1.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-md"
+                        >
+                          查看进度
+                        </button>
+                        <button
+                          onClick={(e) => handleDelete(e, history.id)}
+                          className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-md"
+                        >
+                          取消
+                        </button>
+                      </>
                     )}
                     {history.status === 'completed' && history.book_id && (
                       <button
-                        onClick={() => handleViewBook(history.book_id)}
+                        onClick={(e) => handleViewBook(e, history.book_id)}
                         className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
                       >
                         阅读
@@ -198,14 +232,14 @@ function History() {
                     )}
                     {(history.status === 'failed' || history.status === 'deleted') && (
                       <button
-                        onClick={() => handleContinueGenerate(history)}
+                        onClick={(e) => handleContinueGenerate(e, history)}
                         className="px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-md"
                       >
                         重新生成
                       </button>
                     )}
                     <button
-                      onClick={() => handleDelete(history.id)}
+                      onClick={(e) => handleDelete(e, history.id)}
                       className="p-1.5 text-gray-400 hover:text-red-500 rounded-md"
                       title="删除"
                     >
@@ -214,7 +248,112 @@ function History() {
                       </svg>
                     </button>
                   </div>
+
+                  {/* 展开箭头 */}
+                  <svg 
+                    className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
+
+                {/* 展开内容 */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-gray-100 pt-4" onClick={(e) => e.stopPropagation()}>
+                    {/* 基本信息 */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">创建时间</span>
+                        <p className="text-gray-800">{formatDate(history.created_at)}</p>
+                      </div>
+                      {history.completed_at && (
+                        <div>
+                          <span className="text-gray-500">完成时间</span>
+                          <p className="text-gray-800">{formatDate(history.completed_at)}</p>
+                        </div>
+                      )}
+                      {history.requirements && (
+                        <>
+                          <div>
+                            <span className="text-gray-500">难度</span>
+                            <p className="text-gray-800">{history.requirements.difficulty || '-'}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">目标字数</span>
+                            <p className="text-gray-800">{history.requirements.word_count || '-'}字</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 大纲预览 */}
+                    {history.outline && (
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="font-medium text-gray-700 mb-2">
+                          📋 大纲：{history.outline.title}
+                        </h4>
+                        {history.outline.description && (
+                          <p className="text-sm text-gray-600 mb-3">{history.outline.description}</p>
+                        )}
+                        {history.outline.chapters && history.outline.chapters.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-gray-500 mb-2">章节列表 ({history.outline.chapters.length}章)</p>
+                            {history.outline.chapters.map((chapter, idx) => (
+                              <div key={idx} className="flex items-start gap-2 text-sm">
+                                <span className="text-indigo-500 font-medium">{idx + 1}.</span>
+                                <div>
+                                  <span className="text-gray-800">{chapter.title}</span>
+                                  {chapter.summary && (
+                                    <span className="text-gray-500 ml-2">- {chapter.summary}</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 错误信息 */}
+                    {history.error_message && (
+                      <div className="mt-3 p-3 bg-red-50 rounded-lg">
+                        <p className="text-sm text-red-600">❌ {history.error_message}</p>
+                      </div>
+                    )}
+
+                    {/* 实时进度（仅对进行中的任务） */}
+                    {history.status === 'pending' && taskProgress[history.id] && (
+                      <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                          <p className="text-sm font-medium text-blue-700">实时进度</p>
+                        </div>
+                        <p className="text-sm text-blue-600">
+                          {taskProgress[history.id].progress?.message || '处理中...'}
+                        </p>
+                        {taskProgress[history.id].progress?.current_chapter && (
+                          <div className="mt-2">
+                            <div className="flex justify-between text-xs text-blue-500 mb-1">
+                              <span>第 {taskProgress[history.id].progress.current_chapter} 章</span>
+                              <span>共 {taskProgress[history.id].progress.total_chapters} 章</span>
+                            </div>
+                            <div className="w-full bg-blue-200 rounded-full h-2">
+                              <div 
+                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                style={{ 
+                                  width: `${(taskProgress[history.id].progress.current_chapter / taskProgress[history.id].progress.total_chapters) * 100}%` 
+                                }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}

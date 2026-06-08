@@ -18,6 +18,7 @@ function Generate() {
   const [currentChapter, setCurrentChapter] = useState(0)
   const [totalChapters, setTotalChapters] = useState(0)
   const [historyId, setHistoryId] = useState(null)
+  const [statusMessage, setStatusMessage] = useState('')
   const navigate = useNavigate()
   
   // 使用 ref 存储 abort controller 和组件是否挂载
@@ -35,15 +36,136 @@ function Generate() {
     }
   }, [])
 
-  const handleGenerate = async () => {
-    if (!prompt.trim() || generatingRef.current) return
-    
-    // 如果有之前的请求，先取消
+  // 从 URL 参数恢复状态
+  useEffect(() => {
+    const savedHistoryId = searchParams.get('history_id')
+    if (savedHistoryId) {
+      reconnectToTask(parseInt(savedHistoryId))
+    }
+  }, [searchParams])
+
+  const reconnectToTask = async (taskId) => {
+    // 重新连接到后台任务
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
     
-    // 创建新的 abort controller
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+    
+    setGenerating(true)
+    generatingRef.current = true
+    setHistoryId(taskId)
+    setStatusMessage('正在重新连接...')
+    
+    try {
+      const response = await fetch(`/api/generate/stream/${taskId}`, {
+        signal
+      })
+      
+      await processSSEStream(response, signal)
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Reconnect error:', error)
+        setStatusMessage('重新连接失败')
+      }
+      if (isMountedRef.current) {
+        setGenerating(false)
+        generatingRef.current = false
+      }
+    }
+  }
+
+  const processSSEStream = async (response, signal) => {
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      if (signal.aborted) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const jsonStr = line.slice(6).trim()
+            const data = JSON.parse(jsonStr)
+            
+            if (data.history_id) {
+              setHistoryId(data.history_id)
+            } else if (data.type === 'progress') {
+              handleProgressEvent(data.data)
+            } else if (data.type === 'done') {
+              handleDoneEvent(data.data)
+            } else if (data.type === 'error') {
+              handleErrorEvent(data.data)
+            }
+          } catch (e) {
+            // 忽略解析错误
+          }
+        }
+      }
+    }
+  }
+
+  const handleProgressEvent = (data) => {
+    setStatusMessage(data.message || '')
+    
+    if (data.stage === 'outline' || data.stage === 'outline_done') {
+      if (data.outline) {
+        setOutline(data.outline)
+        setTotalChapters(data.outline.chapters?.length || 0)
+      }
+    } else if (data.stage === 'chapter' || data.stage === 'chapter_done') {
+      setCurrentChapter(data.current_chapter || 0)
+      setTotalChapters(data.total_chapters || 0)
+      
+      if (data.chapter_content) {
+        setChapters(prev => {
+          // 避免重复添加
+          if (prev.some(c => c.index === data.current_chapter - 1)) {
+            return prev
+          }
+          return [...prev, {
+            index: data.current_chapter - 1,
+            title: data.chapter_title,
+            content: data.chapter_content
+          }]
+        })
+      }
+    }
+  }
+
+  const handleDoneEvent = (data) => {
+    setGenerating(false)
+    generatingRef.current = false
+    setStatusMessage('生成完成！')
+    
+    if (data.book_id) {
+      navigate(`/reader/${data.book_id}`)
+    }
+  }
+
+  const handleErrorEvent = (data) => {
+    console.error('Generation error:', data.message)
+    setGenerating(false)
+    generatingRef.current = false
+    setStatusMessage(`错误: ${data.message}`)
+  }
+
+  const handleGenerate = async () => {
+    if (!prompt.trim() || generatingRef.current) return
+    
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
     
@@ -54,6 +176,7 @@ function Generate() {
     setCurrentChapter(0)
     setTotalChapters(0)
     setHistoryId(null)
+    setStatusMessage('准备开始...')
     
     try {
       const response = await fetch('/api/generate/stream', {
@@ -63,51 +186,7 @@ function Generate() {
         signal
       })
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        
-        // 检查是否已取消
-        if (signal.aborted) break
-        
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const jsonStr = line.slice(6).trim()
-              const data = JSON.parse(jsonStr)
-              
-              // 处理 history_id 事件
-              if (data.history_id) {
-                setHistoryId(data.history_id)
-              } else if (data.type === 'outline') {
-                setOutline(data.data)
-                setTotalChapters(data.data.chapters.length)
-              } else if (data.type === 'chapter') {
-                setChapters(prev => [...prev, data.data])
-                setCurrentChapter(data.index + 1)
-              } else if (data.type === 'done') {
-                setGenerating(false)
-                generatingRef.current = false
-                navigate(`/reader/${data.book_id}`)
-              } else if (data.type === 'error') {
-                console.error('Generation error:', data.message)
-                setGenerating(false)
-                generatingRef.current = false
-              }
-            } catch (e) {
-              // 忽略解析错误
-            }
-          }
-        }
-      }
+      await processSSEStream(response, signal)
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error('Generation error:', error)
@@ -136,6 +215,7 @@ function Generate() {
     
     setGenerating(false)
     generatingRef.current = false
+    setStatusMessage('已取消')
   }
 
   return (
@@ -234,11 +314,26 @@ function Generate() {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-semibold mb-4">生成进度</h2>
           <ProgressBar current={currentChapter} total={totalChapters} />
+          {statusMessage && (
+            <p className="text-sm text-gray-600 mt-3 text-center">{statusMessage}</p>
+          )}
           {historyId && (
             <p className="text-xs text-gray-400 mt-2 text-center">
               任务 #{historyId} · 切换页面不会中断生成
             </p>
           )}
+        </div>
+      )}
+
+      {!generating && historyId && statusMessage && !statusMessage.includes('错误') && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
+          <p className="text-green-700">{statusMessage}</p>
+        </div>
+      )}
+
+      {!generating && statusMessage && statusMessage.includes('错误') && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">
+          <p className="text-red-700">{statusMessage}</p>
         </div>
       )}
     </div>

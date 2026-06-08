@@ -51,6 +51,37 @@ def save_book(db: Session, outline: dict, chapters: list, user_id: str) -> str:
     
     return book_id
 
+def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str) -> str:
+    """同步版本的书籍保存，用于后台线程"""
+    book_id = str(uuid.uuid4())[:8]  # 短 ID
+    
+    # 生成 Markdown 内容
+    md_content = f"# {outline['title']}\n\n"
+    md_content += f"{outline['description']}\n\n---\n\n"
+    
+    for i, (chapter_data, content) in enumerate(zip(outline['chapters'], chapters)):
+        md_content += f"## 第{i+1}章：{chapter_data['title']}\n\n{content}\n\n"
+    
+    # 保存到本地文件
+    filepath = get_book_filepath(book_id, outline['title'])
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(md_content)
+    
+    # 保存到数据库
+    book = Book(
+        id=book_id,
+        title=outline['title'],
+        description=outline['description'],
+        outline=outline,
+        file_path=str(filepath),
+        author_id=user_id,
+        source="local"
+    )
+    db.add(book)
+    db.commit()
+    
+    return book_id
+
 def save_p2p_book(db: Session, book_data: dict, peer_id: str) -> str:
     """保存 P2P 接收的书籍"""
     book_id = book_data['id']
