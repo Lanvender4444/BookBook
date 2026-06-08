@@ -24,8 +24,8 @@ const specific = {
   fr: JSON.parse(fs.readFileSync(path.join(i18nDir, 'fr.json'), 'utf-8')),
 }
 
-// 各语言的导航和关键词条翻译
-const navTranslations = {
+// 各语言的其他详细翻译（合并到 specific）
+const extraTranslations = {
   es: { nav: { generate: "Generar", history: "Historial", library: "Biblioteca", network: "Red" }, generate: { title: "Generar eBook", start: "Iniciar generación", generating: "Generando...", cancel: "Cancelar", simple: "Fácil", medium: "Medio", hard: "Difícil", description: "Describe el libro que deseas generar", difficulty: "Dificultad", wordCount: "Palabras objetivo", chapterCount: "Número de capítulos", style: "Estilo", placeholder: "Ej: Un libro introductorio sobre inteligencia artificial para principiantes...", completed: "¡Generación completada!", preparing: "Preparando...", error: "Error", cancelled: "Cancelado", reconnecting: "Reconectando...", reconnectFailed: "Reconexión fallida", outlinePreview: "Vista previa del esquema", progress: "Progreso de generación", taskRunning: "Tarea #{id} · Cambiar de página no interrumpe", }, history: { title: "Historial de generación", newGenerate: "Nueva generación", all: "Todo", pending: "En curso", completed: "Completado", failed: "Fallido", deleted: "Eliminado", noRecords: "Sin historial", goGenerate: "Generar un eBook", viewProgress: "Ver progreso", cancel: "Cancelar", read: "Leer", regenerate: "Regenerar", delete: "Eliminar", createdAt: "Creado", completedAt: "Completado", difficulty: "Dificultad", wordCount: "Palabras objetivo", chapters: "capítulos", realtimeProgress: "Progreso en tiempo real", processing: "Procesando...", chapter: "Capítulo {current}", totalChapters: "Total {total} capítulos", outline: "Esquema", error: "Error", confirmDelete: "¿Está seguro de que desea eliminar este registro? Esta acción no se puede deshacer.", confirmDeleteTitle: "Eliminar registro" }, library: { title: "Mi biblioteca", settings: "Configuración", userInfo: "Información del usuario", userId: "ID de usuario", booksDir: "Ubicación de guardado", save: "Guardar", currentDir: "Ubicación actual", all: "Todo", local: "Local", p2p: "Fuente P2P", noBooks: "Sin libros, ¡genera uno!", read: "Leer", delete: "Eliminar", chapters: "{count} capítulos", confirmDelete: "¿Está seguro de que desea eliminar este libro? Los archivos locales también se eliminarán. Esta acción no se puede deshacer.", confirmDeleteTitle: "Eliminar libro", saved: "Ubicación de guardado actualizada" }, network: { title: "Red P2P", myInfo: "Info de mi nodo", userId: "ID de usuario", ip: "Dirección IP", bookCount: "Número de libros", nodes: "Nodos en línea", noNodes: "Sin otros nodos en línea", books: "Libros compartidos", noBooks: "Sin libros compartidos", download: "Descargar", downloading: "Descargando...", downloadSuccess: "¡Libro descargado exitosamente!", confirmDownload: "¿Desea descargar este libro?", local: "Local", p2p: "P2P" }, reader: { loading: "Cargando...", notFound: "Libro no encontrado", back: "Volver a la biblioteca" }, modal: { confirm: "Confirmar", cancel: "Cancelar" } },
   'es-419': 'es', 'es-MX': 'es',
   de: { nav: { generate: "Erstellen", history: "Verlauf", library: "Bibliothek", network: "Netzwerk" }, generate: { title: "eBook erstellen", start: "Erstellung starten", generating: "Erstellung...", cancel: "Abbrechen", simple: "Einfach", medium: "Mittel", hard: "Schwierig", description: "Beschreiben Sie das gewünschte Buch", difficulty: "Schwierigkeit", wordCount: "Zielwortzahl", chapterCount: "Kapitelanzahl", style: "Stil", placeholder: "z.B. Ein Einsteigerbuch über Künstliche Intelligenz...", completed: "Erstellung abgeschlossen!", preparing: "Vorbereitung...", error: "Fehler", cancelled: "Abgebrochen", reconnecting: "Wiederverbinden...", reconnectFailed: "Wiederverbindung fehlgeschlagen", outlinePreview: "Gliederungsvorschau", progress: "Erstellungsfortschritt", taskRunning: "Aufgabe #{id} · Seitenwechsel unterbricht nicht", }, history: { title: "Erstellungsverlauf", newGenerate: "Neue Erstellung", all: "Alle", pending: "In Bearbeitung", completed: "Abgeschlossen", failed: "Fehlgeschlagen", deleted: "Gelöscht", noRecords: "Kein Verlauf vorhanden", goGenerate: "eBook erstellen", viewProgress: "Fortschritt anzeigen", cancel: "Abbrechen", read: "Lesen", regenerate: "Neu erstellen", delete: "Löschen", createdAt: "Erstellt", completedAt: "Abgeschlossen", difficulty: "Schwierigkeit", wordCount: "Zielwörter", chapters: "Kapitel", realtimeProgress: "Echtzeit-Fortschritt", processing: "Verarbeitung...", chapter: "Kapitel {current}", totalChapters: "Gesamt {total} Kapitel", outline: "Gliederung", error: "Fehler", confirmDelete: "Möchten Sie diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.", confirmDeleteTitle: "Eintrag löschen" }, library: { title: "Meine Bibliothek", settings: "Einstellungen", userInfo: "Benutzerinformationen", userId: "Benutzer-ID", booksDir: "Speicherort", save: "Speichern", currentDir: "Aktueller Speicherort", all: "Alle", local: "Lokal", p2p: "P2P-Quelle", noBooks: "Keine Bücher vorhanden, erstellen Sie eines!", read: "Lesen", delete: "Löschen", chapters: "{count} Kapitel", confirmDelete: "Möchten Sie dieses Buch wirklich löschen? Lokale Dateien werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.", confirmDeleteTitle: "Buch löschen", saved: "Speicherort aktualisiert" }, network: { title: "P2P-Netzwerk", myInfo: "Meine Knoteninformationen", userId: "Benutzer-ID", ip: "IP-Adresse", bookCount: "Buchanzahl", nodes: "Online-Knoten", noNodes: "Keine weiteren Online-Knoten", books: "Geteilte Bücher", noBooks: "Keine geteilten Bücher", download: "Herunterladen", downloading: "Wird heruntergeladen...", downloadSuccess: "Buch erfolgreich heruntergeladen!", confirmDownload: "Möchten Sie dieses Buch herunterladen?", local: "Lokal", p2p: "P2P" }, reader: { loading: "Laden...", notFound: "Buch nicht gefunden", back: "Zurück zur Bibliothek" }, modal: { confirm: "Bestätigen", cancel: "Abbrechen" } },
@@ -46,37 +46,56 @@ const aliasMap = {
   'ar-EG': 'ar',
 }
 
-// 处理别名
+// 将 extraTranslations 合并到 specific（字符串引用转为实际对象）
+for (const [code, value] of Object.entries(extraTranslations)) {
+  if (typeof value === 'string') {
+    if (specific[value] && typeof specific[value] === 'object') {
+      specific[code] = specific[value]
+    }
+  } else if (typeof value === 'object' && value.nav) {
+    specific[code] = value
+  }
+}
+
+// 处理别名（必须在 extraTranslations 合并之后）
 for (const [alias, target] of Object.entries(aliasMap)) {
   if (!specific[alias] && specific[target]) {
     specific[alias] = specific[target]
   }
 }
 
-// 生成所有语言文件
+function deepMerge(base, override) {
+  const result = { ...base }
+  for (const key of Object.keys(override)) {
+    if (typeof override[key] === 'object' && override[key] !== null && !Array.isArray(override[key])) {
+      result[key] = deepMerge(base[key] || {}, override[key])
+    } else {
+      result[key] = override[key]
+    }
+  }
+  return result
+}
+
 const outputDir = path.join(__dirname, '../frontend/src/i18n')
 const allLangs = { ...languageJson }
 
 for (const [code, name] of Object.entries(allLangs)) {
-  // 如果已有独立翻译文件，跳过
   if (specific[code] && typeof specific[code] === 'object' && specific[code].nav) {
-    // 写入文件
-    const content = JSON.stringify(specific[code], null, 2)
-    // 确保格式一致：加上结尾换行
+    const merged = deepMerge(zhCN, specific[code])
+    const content = JSON.stringify(merged, null, 2)
     fs.writeFileSync(path.join(outputDir, `${code}.json`), content + '\n', 'utf-8')
-    console.log(`✓ ${code} (${name}) - written`)
+    console.log(`✓ ${code} (${name}) - written (deep merged)`)
     continue
   }
   
-  // 如果是别名，复制目标语言
   if (aliasMap[code] && specific[aliasMap[code]]) {
-    const content = JSON.stringify(specific[aliasMap[code]], null, 2)
+    const merged = deepMerge(zhCN, specific[aliasMap[code]])
+    const content = JSON.stringify(merged, null, 2)
     fs.writeFileSync(path.join(outputDir, `${code}.json`), content + '\n', 'utf-8')
-    console.log(`✓ ${code} (${name}) - alias of ${aliasMap[code]}`)
+    console.log(`✓ ${code} (${name}) - alias of ${aliasMap[code]} (deep merged)`)
     continue
   }
   
-  // 没有翻译的语言，回退到中文
   const content = JSON.stringify(zhCN, null, 2)
   fs.writeFileSync(path.join(outputDir, `${code}.json`), content + '\n', 'utf-8')
   console.log(`✓ ${code} (${name}) - fallback to zh-CN`)

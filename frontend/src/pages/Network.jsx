@@ -1,101 +1,416 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
-import PeerList from '../components/PeerList'
 import ConfirmModal from '../components/ConfirmModal'
 
 function Network() {
   const { t } = useI18n()
-  const [peers, setPeers] = useState([])
-  const [selectedPeer, setSelectedPeer] = useState(null)
+  const [activeTab, setActiveTab] = useState('share')
+  const [shareTokens, setShareTokens] = useState([])
+  const [shareForm, setShareForm] = useState({ book_id: '', expires_hours: 24 })
+  const [books, setBooks] = useState([])
+  const [connectForm, setConnectForm] = useState({ host: '', port: 47833 })
   const [peerBooks, setPeerBooks] = useState([])
-  const [downloadModal, setDownloadModal] = useState({ open: false, peerId: null, bookId: null })
+  const [connecting, setConnecting] = useState(false)
+  const [redeemForm, setRedeemForm] = useState({ token: '', host: '', port: 47833 })
+  const [redeeming, setRedeeming] = useState(false)
+  const [downloadModal, setDownloadModal] = useState({ open: false, peerHost: '', bookId: '' })
+  const [message, setMessage] = useState('')
+  const [copiedToken, setCopiedToken] = useState('')
 
   useEffect(() => {
-    fetchPeers()
-    const interval = setInterval(fetchPeers, 5000)
-    return () => clearInterval(interval)
+    fetchBooks()
+    fetchShareTokens()
   }, [])
 
-  const fetchPeers = async () => {
+  const fetchBooks = async () => {
     try {
-      const response = await fetch('/api/peers')
+      const response = await fetch('/api/books')
       const data = await response.json()
-      setPeers(data)
+      setBooks(data)
     } catch (error) {
-      console.error('Error fetching peers:', error)
+      console.error('Error fetching books:', error)
     }
   }
 
-  const handleSyncPeer = async (peerId) => {
+  const fetchShareTokens = async () => {
     try {
-      const response = await fetch(`/api/peers/${peerId}/sync`, { method: 'POST' })
-      const data = await response.json()
-      setSelectedPeer(peerId)
-      setPeerBooks(data.books || [])
+      const tokens = shareTokens
+      setShareTokens(tokens)
     } catch (error) {
-      console.error('Error syncing peer:', error)
+      console.error('Error fetching tokens:', error)
     }
   }
 
-  const handleDownloadClick = (peerId, bookId) => {
-    setDownloadModal({ open: true, peerId, bookId })
+  const handleCreateShare = async () => {
+    try {
+      const response = await fetch('/api/peers/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          book_id: shareForm.book_id || null,
+          expires_hours: shareForm.expires_hours
+        })
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setShareTokens(prev => [data, ...prev])
+        setMessage(t('network.shareCreated'))
+        setCopiedToken('')
+      } else {
+        setMessage(data.detail || 'Error')
+      }
+    } catch (error) {
+      setMessage('Error: ' + error.message)
+    }
+  }
+
+  const handleCopyShareUrl = (shareUrl) => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopiedToken(shareUrl)
+      setTimeout(() => setCopiedToken(''), 2000)
+    })
+  }
+
+  const handleConnect = async () => {
+    if (!connectForm.host) return
+    setConnecting(true)
+    setMessage('')
+    try {
+      const response = await fetch(`/api/peers/${connectForm.host}/books?port=${connectForm.port}`, {
+        method: 'POST'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPeerBooks(data.books || [])
+        setMessage(t('network.connected'))
+      } else {
+        const error = await response.json()
+        setMessage(error.detail || t('network.connectFailed'))
+        setPeerBooks([])
+      }
+    } catch (error) {
+      setMessage(t('network.connectFailed') + ': ' + error.message)
+      setPeerBooks([])
+    }
+    setConnecting(false)
+  }
+
+  const handleDownloadClick = (peerHost, bookId) => {
+    setDownloadModal({ open: true, peerHost, bookId })
   }
 
   const confirmDownload = async () => {
-    const { peerId, bookId } = downloadModal
+    const { peerHost, bookId } = downloadModal
     try {
-      const response = await fetch(`/api/peers/${peerId}/books/${bookId}`, { method: 'POST' })
+      const response = await fetch(`/api/peers/${peerHost}/books/${bookId}/download?port=${connectForm.port}`, {
+        method: 'POST'
+      })
       if (response.ok) {
-        alert(t('network.downloadSuccess'))
+        const data = await response.json()
+        setMessage(t('network.downloadSuccess'))
         setPeerBooks(prev => prev.filter(b => b.id !== bookId))
+        fetchBooks()
+      } else {
+        const error = await response.json()
+        setMessage(error.detail || t('network.downloadFailed'))
       }
     } catch (error) {
-      console.error('Error downloading book:', error)
+      setMessage(t('network.downloadFailed'))
     }
-    setDownloadModal({ open: false, peerId: null, bookId: null })
+    setDownloadModal({ open: false, peerHost: '', bookId: '' })
+  }
+
+  const handleRedeem = async () => {
+    if (!redeemForm.token || !redeemForm.host) return
+    setRedeeming(true)
+    setMessage('')
+    try {
+      const response = await fetch('/api/peers/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: redeemForm.token,
+          host: redeemForm.host,
+          port: redeemForm.port
+        })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setMessage(t('network.downloadSuccess'))
+        fetchBooks()
+      } else {
+        const error = await response.json()
+        setMessage(error.detail || t('network.redeemFailed'))
+      }
+    } catch (error) {
+      setMessage(t('network.redeemFailed') + ': ' + error.message)
+    }
+    setRedeeming(false)
   }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">{t('network.title')}</h1>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">{t('network.nodes')}</h2>
-          <PeerList 
-            peers={peers} 
-            onSelectPeer={handleSyncPeer}
-            selectedPeer={selectedPeer}
-          />
-        </div>
 
-        {selectedPeer && (
+      {/* Tab navigation */}
+      <div className="flex space-x-2 mb-6">
+        {[
+          { key: 'share', label: t('network.shareTab'), icon: '🔗' },
+          { key: 'connect', label: t('network.connectTab'), icon: '🌐' },
+          { key: 'redeem', label: t('network.redeemTab'), icon: '📥' }
+        ].map(({ key, label, icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+              activeTab === key
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+
+      {message && (
+        <div className={`mb-4 p-3 rounded-lg text-sm ${
+          message.includes(t('network.downloadSuccess')) || message.includes(t('network.connected')) || message.includes(t('network.shareCreated'))
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {message}
+        </div>
+      )}
+
+      {/* Share Tab */}
+      {activeTab === 'share' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold mb-4">{t('network.books')}</h2>
-            <div className="space-y-3">
-              {peerBooks.map(book => (
-                <div key={book.id} className="border border-gray-200 rounded-lg p-4 flex justify-between items-center hover:shadow-md transition-shadow">
-                  <div>
-                    <h3 className="font-semibold">{book.title}</h3>
-                    <p className="text-sm text-gray-600">{book.description}</p>
-                    <span className="text-xs text-gray-500">{book.chapter_count} {t('history.chapters')}</span>
-                  </div>
-                  <button
-                    onClick={() => handleDownloadClick(selectedPeer, book.id)}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-                  >
-                    {t('network.download')}
-                  </button>
-                </div>
-              ))}
-              
-              {peerBooks.length === 0 && (
-                <p className="text-gray-500 text-center py-8">{t('network.noBooks')}</p>
-              )}
+            <h2 className="text-xl font-semibold mb-4">{t('network.createShare')}</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('network.selectBook')}</label>
+                <select
+                  value={shareForm.book_id}
+                  onChange={(e) => setShareForm({...shareForm, book_id: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">{t('network.allBooks')}</option>
+                  {books.map(book => (
+                    <option key={book.id} value={book.id}>{book.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('network.expireTime')}</label>
+                <select
+                  value={shareForm.expires_hours}
+                  onChange={(e) => setShareForm({...shareForm, expires_hours: parseInt(e.target.value)})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value={1}>1 {t('network.hour')}</option>
+                  <option value={6}>6 {t('network.hours')}</option>
+                  <option value={24}>24 {t('network.hours')}</option>
+                  <option value={72}>3 {t('network.days')}</option>
+                  <option value={168}>7 {t('network.days')}</option>
+                </select>
+              </div>
+
+              <button
+                onClick={handleCreateShare}
+                className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                {t('network.generateLink')}
+              </button>
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">{t('network.myShareLinks')}</h2>
+            {shareTokens.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">{t('network.noShareLinks')}</p>
+            ) : (
+              <div className="space-y-3">
+                {shareTokens.map((token, idx) => (
+                  <div key={idx} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-gray-500">
+                        {token.book_id 
+                          ? books.find(b => b.id === token.book_id)?.title || token.book_id
+                          : t('network.allBooks')
+                        }
+                      </span>
+                      <button
+                        onClick={() => handleCopyShareUrl(token.share_url)}
+                        className="px-3 py-1 text-sm bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100"
+                      >
+                        {copiedToken === token.share_url ? '✓' : t('network.copy')}
+                      </button>
+                    </div>
+                    <div className="bg-gray-50 rounded p-2 text-xs font-mono break-all text-gray-600">
+                      {token.share_url}
+                    </div>
+                    {token.expires_at && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {t('network.expiresAt')}: {new Date(token.expires_at).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Connect Tab */}
+      {activeTab === 'connect' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">{t('network.connectPeer')}</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('network.peerAddress')}
+                </label>
+                <input
+                  type="text"
+                  value={connectForm.host}
+                  onChange={(e) => setConnectForm({...connectForm, host: e.target.value})}
+                  placeholder="192.168.1.100 or example.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('network.peerPort')}
+                </label>
+                <input
+                  type="number"
+                  value={connectForm.port}
+                  onChange={(e) => setConnectForm({...connectForm, port: parseInt(e.target.value) || 47833})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <button
+                onClick={handleConnect}
+                disabled={connecting || !connectForm.host}
+                className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                {connecting ? t('network.connecting') : t('network.connect')}
+              </button>
+            </div>
+
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-medium text-gray-700 mb-2">{t('network.shareHelpTitle')}</h3>
+              <p className="text-sm text-gray-600 mb-2">
+                {t('network.shareHelpDesc')}
+              </p>
+              <div className="bg-white rounded p-3 text-xs font-mono text-gray-500 border border-gray-200">
+                bookbook://share?token=xxx&peer=xxx&v=1
+              </div>
+            </div>
+          </div>
+
+          {peerBooks.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">
+                {t('network.peerBooks')} ({connectForm.host})
+              </h2>
+              <div className="space-y-3">
+                {peerBooks.map(book => (
+                  <div key={book.id} className="border border-gray-200 rounded-lg p-4 flex justify-between items-center hover:shadow-md transition-shadow">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <h3 className="font-semibold truncate">{book.title}</h3>
+                      <p className="text-sm text-gray-600 truncate">{book.description}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-gray-500">{book.chapter_count} {t('history.chapters')}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          book.source === 'local' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {book.source === 'local' ? t('network.local') : 'P2P'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDownloadClick(connectForm.host, book.id)}
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors flex-shrink-0"
+                    >
+                      {t('network.download')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Redeem Tab */}
+      {activeTab === 'redeem' && (
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">{t('network.redeemShare')}</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              {t('network.redeemHelpDesc')}
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('network.shareToken')}
+                </label>
+                <input
+                  type="text"
+                  value={redeemForm.token}
+                  onChange={(e) => setRedeemForm({...redeemForm, token: e.target.value})}
+                  placeholder="bookbook://share?token=xxx&peer=xxx&v=1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('network.peerHost')}
+                </label>
+                <input
+                  type="text"
+                  value={redeemForm.host}
+                  onChange={(e) => setRedeemForm({...redeemForm, host: e.target.value})}
+                  placeholder="192.168.1.100 or example.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('network.peerPort')}
+                </label>
+                <input
+                  type="number"
+                  value={redeemForm.port}
+                  onChange={(e) => setRedeemForm({...redeemForm, port: parseInt(e.target.value) || 47833})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <button
+                onClick={handleRedeem}
+                disabled={redeeming || !redeemForm.token || !redeemForm.host}
+                className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                {redeeming ? t('network.downloading') : t('network.redeemBtn')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         isOpen={downloadModal.open}
@@ -104,7 +419,7 @@ function Network() {
         confirmText={t('modal.confirm')}
         cancelText={t('modal.cancel')}
         onConfirm={confirmDownload}
-        onCancel={() => setDownloadModal({ open: false, peerId: null, bookId: null })}
+        onCancel={() => setDownloadModal({ open: false, peerHost: '', bookId: '' })}
       />
     </div>
   )

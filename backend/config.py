@@ -33,8 +33,11 @@ KIMI_BASE_URL = os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1")
 
 # P2P Settings
 P2P_ENABLED = os.getenv("P2P_ENABLED", "true").lower() == "true"
-P2P_BROADCAST_PORT = int(os.getenv("P2P_BROADCAST_PORT", "47832"))
-P2P_BOOK_PORT = int(os.getenv("P2P_BOOK_PORT", "47833"))
+P2P_PORT = int(os.getenv("P2P_PORT", "47833"))
+P2P_MAGIC = "EBOOK_P2P"
+P2P_APP_ID = "com.bookbook.ebookgenerator"
+P2P_VERSION = "1"
+P2P_SHARE_TOKEN_EXPIRE = int(os.getenv("P2P_SHARE_TOKEN_EXPIRE", "86400"))
 
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/ebooks.db")

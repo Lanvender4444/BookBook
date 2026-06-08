@@ -21,12 +21,23 @@ class GenerationHistory(Base):
     __tablename__ = "generation_history"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    book_id = Column(String, nullable=True)  # 完成后关联的书籍 ID
-    prompt = Column(Text, nullable=False)  # 用户输入的需求
-    requirements = Column(JSON)  # 生成要求
-    outline = Column(JSON)  # 大纲 (生成完成后填充)
-    status = Column(String, default="pending")  # pending/completed/failed/deleted
-    error_message = Column(Text, nullable=True)  # 错误信息
+    book_id = Column(String, nullable=True)
+    prompt = Column(Text, nullable=False)
+    requirements = Column(JSON)
+    outline = Column(JSON)
+    status = Column(String, default="pending")
+    error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now())
-    completed_at = Column(DateTime, nullable=True)  # 完成时间
+    completed_at = Column(DateTime, nullable=True)
     author_id = Column(String)
+
+class ShareToken(Base):
+    __tablename__ = "share_tokens"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String, unique=True, nullable=False, index=True)
+    book_id = Column(String, nullable=True)
+    peer_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    expires_at = Column(DateTime, nullable=True)
+    used_count = Column(Integer, default=0)
