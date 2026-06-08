@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useI18n } from '../i18n'
 import ConfirmModal from '../components/ConfirmModal'
 
 function History() {
+  const { t, locale } = useI18n()
   const [histories, setHistories] = useState([])
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
@@ -30,10 +32,7 @@ function History() {
       const response = await fetch(`/api/generate/history/${historyId}`)
       const data = await response.json()
       if (data.task_status) {
-        setTaskProgress(prev => ({
-          ...prev,
-          [historyId]: data.task_status
-        }))
+        setTaskProgress(prev => ({ ...prev, [historyId]: data.task_status }))
         if (data.task_status.status === 'completed' || data.task_status.status === 'failed') {
           fetchHistories()
         }
@@ -78,20 +77,17 @@ function History() {
 
   const handleViewBook = (e, bookId) => {
     e.stopPropagation()
-    if (bookId) {
-      navigate(`/reader/${bookId}`)
-    }
+    if (bookId) navigate(`/reader/${bookId}`)
   }
 
   const handleContinueGenerate = (e, history) => {
     e.stopPropagation()
     const params = new URLSearchParams({
       prompt: history.prompt,
-      difficulty: history.requirements?.difficulty || '中等',
+      difficulty: history.requirements?.difficulty || 'medium',
       word_count: history.requirements?.word_count || '5000',
       chapter_count: history.requirements?.chapter_count || '5-8',
-      style: history.requirements?.style || '科普向',
-      language: history.requirements?.language || 'zh-CN'
+      style: history.requirements?.style || '科普向'
     })
     navigate(`/generate?${params.toString()}`)
   }
@@ -107,30 +103,31 @@ function History() {
 
   const getStatusBadge = (status) => {
     const badges = {
-      pending: { text: '生成中', color: 'bg-yellow-100 text-yellow-700', icon: '⏳' },
-      completed: { text: '已完成', color: 'bg-green-100 text-green-700', icon: '✅' },
-      failed: { text: '失败', color: 'bg-red-100 text-red-700', icon: '❌' },
-      deleted: { text: '已删除', color: 'bg-gray-100 text-gray-500', icon: '🗑️' }
+      pending: { text: t('history.pending'), color: 'bg-yellow-100 text-yellow-700', icon: '⏳' },
+      completed: { text: t('history.completed'), color: 'bg-green-100 text-green-700', icon: '✅' },
+      failed: { text: t('history.failed'), color: 'bg-red-100 text-red-700', icon: '❌' },
+      deleted: { text: t('history.deleted'), color: 'bg-gray-100 text-gray-500', icon: '🗑️' }
     }
     return badges[status] || badges.pending
   }
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '-'
-    const date = new Date(dateStr)
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    return new Date(dateStr).toLocaleString()
   }
+
+  const filterOptions = [
+    { key: 'all', label: t('history.all') },
+    { key: 'pending', label: t('history.pending') },
+    { key: 'completed', label: t('history.completed') },
+    { key: 'failed', label: t('history.failed') },
+    { key: 'deleted', label: t('history.deleted') }
+  ]
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">生成历史</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('history.title')}</h1>
         <button
           onClick={() => navigate('/generate')}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2"
@@ -138,25 +135,19 @@ function History() {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          新建生成
+          {t('history.newGenerate')}
         </button>
       </div>
 
       <div className="flex space-x-2 mb-6">
-        {[
-          { key: 'all', label: '全部' },
-          { key: 'pending', label: '进行中' },
-          { key: 'completed', label: '已完成' },
-          { key: 'failed', label: '失败' },
-          { key: 'deleted', label: '已删除' }
-        ].map(({ key, label }) => (
+        {filterOptions.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
-            className={`px-4 py-2 rounded-md text-sm transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
               filter === key 
                 ? 'bg-indigo-600 text-white' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
             }`}
           >
             {label}
@@ -165,16 +156,16 @@ function History() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-gray-500">加载中...</div>
+        <div className="text-center py-12 text-gray-500">Loading...</div>
       ) : histories.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-gray-400 text-6xl mb-4">📝</div>
-          <p className="text-gray-500">暂无历史记录</p>
+          <p className="text-gray-500">{t('history.noRecords')}</p>
           <button
             onClick={() => navigate('/generate')}
             className="mt-4 text-indigo-600 hover:text-indigo-700"
           >
-            去生成一本电子书
+            {t('history.goGenerate')}
           </button>
         </div>
       ) : (
@@ -187,9 +178,7 @@ function History() {
               <div 
                 key={history.id} 
                 className={`bg-white rounded-lg border transition-all ${
-                  isExpanded 
-                    ? 'shadow-md border-indigo-200' 
-                    : 'shadow-sm border-gray-100 hover:shadow-md hover:border-gray-200'
+                  isExpanded ? 'shadow-md border-indigo-200' : 'shadow-sm border-gray-100 hover:shadow-md hover:border-gray-200'
                 }`}
               >
                 <div 
@@ -209,58 +198,38 @@ function History() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {history.status === 'pending' && (
                       <>
-                        <button
-                          type="button"
-                          onClick={(e) => handleViewProgress(e, history)}
-                          className="px-3 py-1.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-md"
-                        >
-                          查看进度
+                        <button type="button" onClick={(e) => handleViewProgress(e, history)}
+                          className="px-3 py-1.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg">
+                          {t('history.viewProgress')}
                         </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteClick(e, history.id)}
-                          className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-md"
-                        >
-                          取消
+                        <button type="button" onClick={(e) => handleDeleteClick(e, history.id)}
+                          className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg">
+                          {t('history.cancel')}
                         </button>
                       </>
                     )}
                     {history.status === 'completed' && history.book_id && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleViewBook(e, history.book_id)}
-                        className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-                      >
-                        阅读
+                      <button type="button" onClick={(e) => handleViewBook(e, history.book_id)}
+                        className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                        {t('history.read')}
                       </button>
                     )}
                     {(history.status === 'failed' || history.status === 'deleted') && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleContinueGenerate(e, history)}
-                        className="px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-md"
-                      >
-                        重新生成
+                      <button type="button" onClick={(e) => handleContinueGenerate(e, history)}
+                        className="px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg">
+                        {t('history.regenerate')}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteClick(e, history.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md"
-                      title="删除"
-                    >
+                    <button type="button" onClick={(e) => handleDeleteClick(e, history.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title={t('history.delete')}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     </button>
                   </div>
 
-                  <svg 
-                    className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
@@ -269,23 +238,23 @@ function History() {
                   <div className="px-4 pb-4 border-t border-gray-100 pt-4">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
                       <div>
-                        <span className="text-gray-500">创建时间</span>
+                        <span className="text-gray-500">{t('history.createdAt')}</span>
                         <p className="text-gray-800">{formatDate(history.created_at)}</p>
                       </div>
                       {history.completed_at && (
                         <div>
-                          <span className="text-gray-500">完成时间</span>
+                          <span className="text-gray-500">{t('history.completedAt')}</span>
                           <p className="text-gray-800">{formatDate(history.completed_at)}</p>
                         </div>
                       )}
                       {history.requirements && (
                         <>
                           <div>
-                            <span className="text-gray-500">难度</span>
+                            <span className="text-gray-500">{t('history.difficulty')}</span>
                             <p className="text-gray-800">{history.requirements.difficulty || '-'}</p>
                           </div>
                           <div>
-                            <span className="text-gray-500">目标字数</span>
+                            <span className="text-gray-500">{t('history.wordCount')}</span>
                             <p className="text-gray-800">{history.requirements.word_count || '-'}字</p>
                           </div>
                         </>
@@ -295,14 +264,16 @@ function History() {
                     {history.outline && (
                       <div className="bg-gray-50 rounded-lg p-4">
                         <h4 className="font-medium text-gray-700 mb-2">
-                          大纲：{history.outline.title}
+                          {t('history.outline')}：{history.outline.title}
                         </h4>
                         {history.outline.description && (
                           <p className="text-sm text-gray-600 mb-3">{history.outline.description}</p>
                         )}
                         {history.outline.chapters && history.outline.chapters.length > 0 && (
                           <div className="space-y-1">
-                            <p className="text-xs text-gray-500 mb-2">章节列表 ({history.outline.chapters.length}章)</p>
+                            <p className="text-xs text-gray-500 mb-2">
+                              {history.outline.chapters.length} {t('history.chapters')}
+                            </p>
                             {history.outline.chapters.map((chapter, idx) => (
                               <div key={idx} className="flex items-start gap-2 text-sm">
                                 <span className="text-indigo-500 font-medium">{idx + 1}.</span>
@@ -321,7 +292,7 @@ function History() {
 
                     {history.error_message && (
                       <div className="mt-3 p-3 bg-red-50 rounded-lg">
-                        <p className="text-sm text-red-600">{history.error_message}</p>
+                        <p className="text-sm text-red-600">{t('history.error')}: {history.error_message}</p>
                       </div>
                     )}
 
@@ -329,23 +300,21 @@ function History() {
                       <div className="mt-3 p-3 bg-blue-50 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                          <p className="text-sm font-medium text-blue-700">实时进度</p>
+                          <p className="text-sm font-medium text-blue-700">{t('history.realtimeProgress')}</p>
                         </div>
                         <p className="text-sm text-blue-600">
-                          {taskProgress[history.id].progress?.message || '处理中...'}
+                          {taskProgress[history.id].progress?.message || t('history.processing')}
                         </p>
                         {taskProgress[history.id].progress?.current_chapter > 0 && (
                           <div className="mt-2">
                             <div className="flex justify-between text-xs text-blue-500 mb-1">
-                              <span>第 {taskProgress[history.id].progress.current_chapter} 章</span>
-                              <span>共 {taskProgress[history.id].progress.total_chapters} 章</span>
+                              <span>{t('history.chapter').replace('{current}', taskProgress[history.id].progress.current_chapter)}</span>
+                              <span>{t('history.totalChapters').replace('{total}', taskProgress[history.id].progress.total_chapters)}</span>
                             </div>
                             <div className="w-full bg-blue-200 rounded-full h-2">
                               <div 
                                 className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                                style={{ 
-                                  width: `${(taskProgress[history.id].progress.current_chapter / taskProgress[history.id].progress.total_chapters) * 100}%` 
-                                }}
+                                style={{ width: `${(taskProgress[history.id].progress.current_chapter / taskProgress[history.id].progress.total_chapters) * 100}%` }}
                               ></div>
                             </div>
                           </div>
@@ -362,10 +331,10 @@ function History() {
 
       <ConfirmModal
         isOpen={deleteModal.open}
-        title="删除记录"
-        message="确定要删除这条记录吗？此操作不可撤销。"
-        confirmText="删除"
-        cancelText="取消"
+        title={t('history.confirmDeleteTitle')}
+        message={t('history.confirmDelete')}
+        confirmText={t('modal.confirm')}
+        cancelText={t('modal.cancel')}
         danger={true}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteModal({ open: false, historyId: null })}

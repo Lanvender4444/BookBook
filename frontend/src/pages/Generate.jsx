@@ -1,66 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useI18n } from '../i18n'
 import OutlineTree from '../components/OutlineTree'
 import ProgressBar from '../components/ProgressBar'
-
-const LANGUAGES = {
-  "zh-CN": "中文（简体）",
-  "zh-TW": "中文（繁體）",
-  "en": "English",
-  "ja": "日本語",
-  "ko": "한국어",
-  "es": "español",
-  "fr": "français",
-  "de": "Deutsch",
-  "it": "italiano",
-  "pt-BR": "português (Brasil)",
-  "ru": "русский",
-  "ar": "العربية",
-  "hi": "हिन्दी",
-  "th": "ไทย",
-  "vi": "Tiếng Việt",
-  "id": "Indonesia",
-  "ms": "Melayu",
-  "tr": "Türkçe",
-  "pl": "polski",
-  "nl": "Nederlands",
-  "sv": "svenska",
-  "da": "dansk",
-  "fi": "suomi",
-  "nb": "norsk bokmål",
-  "cs": "čeština",
-  "sk": "slovenčina",
-  "hu": "magyar",
-  "ro": "română",
-  "bg": "български",
-  "uk": "українська",
-  "el": "Ελληνικά",
-  "he": "עברית",
-  "bn": "বাংলা",
-  "ta": "தமிழ்",
-  "te": "తెలుగు",
-  "ml": "മലയാളം",
-  "kn": "ಕನ್ನಡ",
-  "ca": "català",
-  "hr": "hrvatski",
-  "sl": "slovenščina",
-  "et": "eesti",
-  "lv": "latviešu",
-  "lt": "lietuvių",
-  "fil": "Filipino",
-  "sw": "Kiswahili",
-  "af": "Afrikaans"
-}
+import CustomSelect from '../components/CustomSelect'
+import CustomInput from '../components/CustomInput'
 
 function Generate() {
+  const { t, locale } = useI18n()
   const [searchParams] = useSearchParams()
   const [prompt, setPrompt] = useState(searchParams.get('prompt') || '')
   const [requirements, setRequirements] = useState({
-    difficulty: searchParams.get('difficulty') || '中等',
+    difficulty: searchParams.get('difficulty') || 'medium',
     word_count: searchParams.get('word_count') || '5000',
     chapter_count: searchParams.get('chapter_count') || '5-8',
-    style: searchParams.get('style') || '科普向',
-    language: searchParams.get('language') || 'zh-CN'
+    style: searchParams.get('style') || '科普向'
   })
   const [outline, setOutline] = useState(null)
   const [chapters, setChapters] = useState([])
@@ -102,18 +56,14 @@ function Generate() {
     setGenerating(true)
     generatingRef.current = true
     setHistoryId(taskId)
-    setStatusMessage('正在重新连接...')
+    setStatusMessage(t('generate.reconnecting'))
     
     try {
-      const response = await fetch(`/api/generate/stream/${taskId}`, {
-        signal
-      })
-      
+      const response = await fetch(`/api/generate/stream/${taskId}`, { signal })
       await processSSEStream(response, signal)
     } catch (error) {
       if (error.name !== 'AbortError') {
-        console.error('Reconnect error:', error)
-        setStatusMessage('重新连接失败')
+        setStatusMessage(t('generate.reconnectFailed'))
       }
       if (isMountedRef.current) {
         setGenerating(false)
@@ -130,7 +80,6 @@ function Generate() {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      
       if (signal.aborted) break
       
       buffer += decoder.decode(value, { stream: true })
@@ -152,8 +101,7 @@ function Generate() {
             } else if (data.type === 'error') {
               handleErrorEvent(data.data)
             }
-          } catch (e) {
-          }
+          } catch (e) {}
         }
       }
     }
@@ -173,9 +121,7 @@ function Generate() {
       
       if (data.chapter_content) {
         setChapters(prev => {
-          if (prev.some(c => c.index === data.current_chapter - 1)) {
-            return prev
-          }
+          if (prev.some(c => c.index === data.current_chapter - 1)) return prev
           return [...prev, {
             index: data.current_chapter - 1,
             title: data.chapter_title,
@@ -189,26 +135,20 @@ function Generate() {
   const handleDoneEvent = (data) => {
     setGenerating(false)
     generatingRef.current = false
-    setStatusMessage('生成完成！')
-    
-    if (data.book_id) {
-      navigate(`/reader/${data.book_id}`)
-    }
+    setStatusMessage(t('generate.completed'))
+    if (data.book_id) navigate(`/reader/${data.book_id}`)
   }
 
   const handleErrorEvent = (data) => {
-    console.error('Generation error:', data.message)
     setGenerating(false)
     generatingRef.current = false
-    setStatusMessage(`错误: ${data.message}`)
+    setStatusMessage(`${t('generate.error')}: ${data.message}`)
   }
 
   const handleGenerate = async () => {
     if (!prompt.trim() || generatingRef.current) return
     
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort()
     
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
@@ -220,22 +160,21 @@ function Generate() {
     setCurrentChapter(0)
     setTotalChapters(0)
     setHistoryId(null)
-    setStatusMessage('准备开始...')
+    setStatusMessage(t('generate.preparing'))
     
     try {
       const response = await fetch('/api/generate/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, requirements }),
+        body: JSON.stringify({ 
+          prompt, 
+          requirements: { ...requirements, language: locale } 
+        }),
         signal
       })
-
       await processSSEStream(response, signal)
     } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('Generation error:', error)
-      }
-      if (isMountedRef.current) {
+      if (error.name !== 'AbortError' && isMountedRef.current) {
         setGenerating(false)
         generatingRef.current = false
       }
@@ -243,99 +182,73 @@ function Generate() {
   }
 
   const handleCancel = async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-    
+    if (abortControllerRef.current) abortControllerRef.current.abort()
     if (historyId) {
-      try {
-        await fetch(`/api/generate/${historyId}/cancel`, { method: 'POST' })
-      } catch (e) {
-        console.error('Cancel error:', e)
-      }
+      try { await fetch(`/api/generate/${historyId}/cancel`, { method: 'POST' }) } catch (e) {}
     }
-    
     setGenerating(false)
     generatingRef.current = false
-    setStatusMessage('已取消')
+    setStatusMessage(t('generate.cancelled'))
   }
+
+  const difficultyOptions = [
+    { value: 'simple', label: t('generate.simple') },
+    { value: 'medium', label: t('generate.medium') },
+    { value: 'hard', label: t('generate.hard') }
+  ]
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">生成电子书</h1>
+      <h1 className="text-3xl font-bold text-gray-900 mb-8">{t('generate.title')}</h1>
       
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          描述你想生成的书籍
+          {t('generate.description')}
         </label>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          placeholder="例如：一本关于人工智能入门的书籍，适合初学者阅读..."
+          className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 hover:border-gray-400 transition-all"
+          placeholder={t('generate.placeholder')}
           disabled={generating}
         />
         
         <div className="mt-4 grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">难易度</label>
-            <select
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('generate.difficulty')}</label>
+            <CustomSelect
               value={requirements.difficulty}
-              onChange={(e) => setRequirements({...requirements, difficulty: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              onChange={(val) => setRequirements({...requirements, difficulty: val})}
+              options={difficultyOptions}
               disabled={generating}
-            >
-              <option>简单</option>
-              <option>中等</option>
-              <option>困难</option>
-            </select>
+            />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">目标字数</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('generate.wordCount')}</label>
+            <CustomInput
               value={requirements.word_count}
-              onChange={(e) => setRequirements({...requirements, word_count: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              onChange={(val) => setRequirements({...requirements, word_count: val})}
               disabled={generating}
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">章节数量</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('generate.chapterCount')}</label>
+            <CustomInput
               value={requirements.chapter_count}
-              onChange={(e) => setRequirements({...requirements, chapter_count: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              onChange={(val) => setRequirements({...requirements, chapter_count: val})}
               disabled={generating}
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">风格</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('generate.style')}</label>
+            <CustomInput
               value={requirements.style}
-              onChange={(e) => setRequirements({...requirements, style: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              onChange={(val) => setRequirements({...requirements, style: val})}
               disabled={generating}
             />
-          </div>
-          
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">生成语言</label>
-            <select
-              value={requirements.language}
-              onChange={(e) => setRequirements({...requirements, language: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              disabled={generating}
-            >
-              {Object.entries(LANGUAGES).map(([code, name]) => (
-                <option key={code} value={code}>{name}</option>
-              ))}
-            </select>
           </div>
         </div>
         
@@ -343,17 +256,17 @@ function Generate() {
           <button
             onClick={handleGenerate}
             disabled={generating || !prompt.trim()}
-            className="flex-1 bg-indigo-600 text-white py-3 px-4 rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
           >
-            {generating ? '生成中...' : '开始生成'}
+            {generating ? t('generate.generating') : t('generate.start')}
           </button>
           
           {generating && (
             <button
               onClick={handleCancel}
-              className="px-6 py-3 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+              className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
             >
-              取消
+              {t('generate.cancel')}
             </button>
           )}
         </div>
@@ -361,33 +274,33 @@ function Generate() {
 
       {outline && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">大纲预览</h2>
+          <h2 className="text-xl font-semibold mb-4">{t('generate.outlinePreview')}</h2>
           <OutlineTree outline={outline} />
         </div>
       )}
 
       {generating && (
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">生成进度</h2>
+          <h2 className="text-xl font-semibold mb-4">{t('generate.progress')}</h2>
           <ProgressBar current={currentChapter} total={totalChapters} />
           {statusMessage && (
             <p className="text-sm text-gray-600 mt-3 text-center">{statusMessage}</p>
           )}
           {historyId && (
             <p className="text-xs text-gray-400 mt-2 text-center">
-              任务 #{historyId} · 切换页面不会中断生成
+              {t('generate.taskRunning').replace('{id}', historyId)}
             </p>
           )}
         </div>
       )}
 
-      {!generating && historyId && statusMessage && !statusMessage.includes('错误') && (
+      {!generating && historyId && statusMessage && !statusMessage.includes(t('generate.error')) && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
           <p className="text-green-700">{statusMessage}</p>
         </div>
       )}
 
-      {!generating && statusMessage && statusMessage.includes('错误') && (
+      {!generating && statusMessage && statusMessage.includes(t('generate.error')) && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">
           <p className="text-red-700">{statusMessage}</p>
         </div>

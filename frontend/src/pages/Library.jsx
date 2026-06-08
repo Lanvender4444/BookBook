@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useI18n } from '../i18n'
 import BookCard from '../components/BookCard'
 import ConfirmModal from '../components/ConfirmModal'
+import CustomInput from '../components/CustomInput'
 
 function Library() {
+  const { t } = useI18n()
   const [books, setBooks] = useState([])
   const [filter, setFilter] = useState('all')
   const [booksDir, setBooksDir] = useState('')
@@ -58,7 +61,7 @@ function Library() {
       if (response.ok) {
         setBooksDir(newDir)
         setShowSettings(false)
-        alert('保存地址已更新')
+        alert(t('library.saved'))
       }
     } catch (error) {
       console.error('Error updating dir:', error)
@@ -84,31 +87,37 @@ function Library() {
     return book.source === filter
   })
 
+  const filterOptions = [
+    { key: 'all', label: t('library.all') },
+    { key: 'local', label: t('library.local') },
+    { key: 'p2p', label: t('library.p2p') }
+  ]
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">我的书库</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('library.title')}</h1>
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className="text-gray-600 hover:text-indigo-600 flex items-center gap-2"
+          className="text-gray-600 hover:text-indigo-600 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          设置
+          {t('library.settings')}
         </button>
       </div>
 
       {showSettings && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">设置</h2>
+          <h2 className="text-xl font-semibold mb-4">{t('library.settings')}</h2>
           
           {userInfo && (
             <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium text-gray-700 mb-2">用户信息</h3>
+              <h3 className="font-medium text-gray-700 mb-2">{t('library.userInfo')}</h3>
               <p className="text-sm text-gray-600">
-                <span className="font-medium">用户 ID：</span>
+                <span className="font-medium">{t('library.userId')}：</span>
                 <code className="ml-2 px-2 py-1 bg-gray-200 rounded text-xs">{userInfo.user_id}</code>
               </p>
             </div>
@@ -116,49 +125,44 @@ function Library() {
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              书籍保存位置
+              {t('library.booksDir')}
             </label>
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={newDir}
-                onChange={(e) => setNewDir(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="例如: C:\Users\YourName\BookBook"
-              />
+              <div className="flex-1">
+                <CustomInput
+                  value={newDir}
+                  onChange={setNewDir}
+                  placeholder="C:\Users\YourName\BookBook"
+                />
+              </div>
               <button
                 onClick={handleUpdateDir}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
               >
-                保存
+                {t('library.save')}
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              当前位置: {booksDir}
+              {t('library.currentDir')}: {booksDir}
             </p>
           </div>
         </div>
       )}
 
-      <div className="flex space-x-4 mb-6">
-        <button
-          onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-md ${filter === 'all' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-        >
-          全部
-        </button>
-        <button
-          onClick={() => setFilter('local')}
-          className={`px-4 py-2 rounded-md ${filter === 'local' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-        >
-          本地
-        </button>
-        <button
-          onClick={() => setFilter('p2p')}
-          className={`px-4 py-2 rounded-md ${filter === 'p2p' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-        >
-          P2P 来源
-        </button>
+      <div className="flex space-x-2 mb-6">
+        {filterOptions.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+              filter === key 
+                ? 'bg-indigo-600 text-white' 
+                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -169,16 +173,16 @@ function Library() {
 
       {filteredBooks.length === 0 && (
         <div className="text-center py-12 text-gray-500">
-          暂无书籍，去生成一本吧！
+          {t('library.noBooks')}
         </div>
       )}
-      
+
       <ConfirmModal
         isOpen={deleteModal.open}
-        title="删除书籍"
-        message="确定要删除这本书吗？此操作将同时删除本地文件，不可撤销。"
-        confirmText="删除"
-        cancelText="取消"
+        title={t('library.confirmDeleteTitle')}
+        message={t('library.confirmDelete')}
+        confirmText={t('modal.confirm')}
+        cancelText={t('modal.cancel')}
         danger={true}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteModal({ open: false, bookId: null })}
