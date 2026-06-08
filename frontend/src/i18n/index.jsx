@@ -13,11 +13,23 @@ export function I18nProvider({ children }) {
 
   const t = useCallback((key, params = {}) => {
     const keys = key.split('.')
+    
+    // 优先使用当前语言的翻译
     let value = translations[locale]
     for (const k of keys) {
       value = value?.[k]
     }
+    
+    // 如果当前语言没有翻译，回退到中文
+    if (typeof value !== 'string') {
+      value = translations['zh-CN']
+      for (const k of keys) {
+        value = value?.[k]
+      }
+    }
+    
     if (typeof value !== 'string') return key
+    
     return Object.entries(params).reduce(
       (str, [k, v]) => str.replace(new RegExp(`\\{${k}\\}`, 'g'), v),
       value
