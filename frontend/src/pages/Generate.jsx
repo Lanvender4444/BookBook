@@ -5,6 +5,7 @@ import OutlineTree from '../components/OutlineTree'
 import ProgressBar from '../components/ProgressBar'
 import CustomSelect from '../components/CustomSelect'
 import CustomInput from '../components/CustomInput'
+import TypewriterHeading from '../components/TypewriterHeading'
 
 function Generate() {
   const { t, locale } = useI18n()
@@ -199,7 +200,7 @@ function Generate() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">{t('generate.title')}</h1>
+      <TypewriterHeading text={t('generate.title')} speed={120} className="text-gray-900 mb-8" />
       
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
