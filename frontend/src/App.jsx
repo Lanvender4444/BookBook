@@ -3,6 +3,7 @@ import Generate from './pages/Generate'
 import Library from './pages/Library'
 import Reader from './pages/Reader'
 import Network from './pages/Network'
+import History from './pages/History'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
               </div>
               <div className="flex items-center space-x-4">
                 <a href="/generate" className="text-gray-700 hover:text-indigo-600">生成</a>
+                <a href="/history" className="text-gray-700 hover:text-indigo-600">历史</a>
                 <a href="/library" className="text-gray-700 hover:text-indigo-600">书库</a>
                 <a href="/network" className="text-gray-700 hover:text-indigo-600">网络</a>
               </div>
@@ -27,6 +29,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Generate />} />
           <Route path="/generate" element={<Generate />} />
+          <Route path="/history" element={<History />} />
           <Route path="/library" element={<Library />} />
           <Route path="/reader/:id" element={<Reader />} />
           <Route path="/network" element={<Network />} />
