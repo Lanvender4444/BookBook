@@ -62,11 +62,15 @@ async def connect_to_peer(req: ConnectRequest):
 @router.post("/{peer_host}/books")
 async def fetch_peer_books(peer_host: str, port: int = 47833):
     books = await p2p_service.fetch_book_list(peer_host, port)
+    if books is None:
+        raise HTTPException(status_code=400, detail="Failed to connect to peer")
     return {"books": books}
 
 @router.post("/{peer_host}/books/{book_id}/download")
 async def download_book_from_peer(peer_host: str, book_id: str, port: int = 47833):
     book_data = await p2p_service.fetch_book(peer_host, book_id, port)
+    if book_data is None:
+        raise HTTPException(status_code=400, detail="Failed to connect to peer or book not found")
     if not book_data:
         raise HTTPException(status_code=404, detail="Book not found on peer")
     
@@ -154,7 +158,7 @@ async def redeem_share_token(req: RedeemRequest):
         detail = "Failed to fetch book from peer"
         if last_error:
             detail += f": {last_error}"
-        raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
 
     db = SessionLocal()
     try:

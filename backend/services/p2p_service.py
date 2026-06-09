@@ -383,7 +383,7 @@ class P2PService:
 
             if response.get("status") != "ok":
                 writer.close()
-                return []
+                return None
 
             request = {"action": "list_books"}
             writer.write(json.dumps(request).encode())
@@ -403,7 +403,7 @@ class P2PService:
             return result.get("books", [])
 
         except Exception as e:
-            return []
+            return None
     
     async def fetch_book(self, host: str, book_id: str, port: int = None) -> dict:
         if port is None:

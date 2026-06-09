@@ -1,7 +1,9 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
 from routers import books, generate, p2p
+from routers.p2p import p2p_service
 from services.identity import generate_user_id
 
 app = FastAPI(title="AI eBook Generator", version="1.0.0")
@@ -15,8 +17,18 @@ app.add_middleware(
 )
 
 @app.on_event("startup")
-def startup():
+async def startup():
     init_db()
+    # 启动 P2P TCP 服务器（后台运行）
+    try:
+        asyncio.create_task(p2p_service.start())
+        print(f"[P2P] TCP server started on port 47833")
+    except Exception as e:
+        print(f"[P2P] Failed to start TCP server: {e}")
+
+@app.on_event("shutdown")
+async def shutdown():
+    await p2p_service.stop()
 
 @app.get("/api/identity")
 def get_identity():
