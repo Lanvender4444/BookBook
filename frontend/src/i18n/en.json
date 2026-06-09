@@ -132,7 +132,14 @@
     "redeemFailed": "Receive failed",
     "shareCreated": "Share link created",
     "shareHelpTitle": "How to Use Share Links",
-    "shareHelpDesc": "Send the generated link to your peer. They can paste it in the 'Receive' tab to get your books."
+    "shareHelpDesc": "Send the generated link to your peer. They can paste it in the 'Receive' tab to get your books.",
+    "currentIp": "Current IP",
+    "shareUrl": "Share URL",
+    "parseLink": "Parse Link",
+    "autoFilled": "Auto-filled",
+    "copySuccess": "Copied",
+    "booksDownloaded": "Downloaded {count} books",
+    "times": "times"
   },
   "reader": {
     "loading": "Loading...",
