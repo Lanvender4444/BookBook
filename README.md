@@ -107,6 +107,55 @@ docker-compose up -d
 **注意：** 需要先在 `backend/.env` 中配置好环境变量。
 
 
+## 支持语言
+
+BookBook 支持以下语言的界面显示：
+
+| 语言 | 代码 | 语言 | 代码 |
+|------|------|------|------|
+| 中文（简体） | zh-CN | 中文（繁體） | zh-TW |
+| 日本語 | ja | 한국어 | ko |
+| English | en | Deutsch | de |
+| français | fr | français (Canada) | fr-CA |
+| español | es | español (Latinoamérica) | es-419 |
+| español (México) | es-MX | italiano | it |
+| português (Brasil) | pt-BR | português (Portugal) | pt-PT |
+| Русский | русский | українська | uk |
+| беларуская | be | български | bg |
+| čeština | cs | dansk | da |
+| eesti | et | ελληνικά | el |
+| suomi | fi | galego | gl |
+| hrvatski | hr | magyar | hu |
+| íslenska | is | latviešu | lv |
+| lietuvių | lt | macedonian | mk |
+| Nederlands | nl | norsk bokmål | nb |
+| norsk nynorsk | nn | polski | pl |
+| română | ro | shqip | sq |
+| slovenčina | sk | slovenščina | sl |
+| srpski | sr | svenska | sv |
+| Türkçe | tr | català | ca |
+| Cebuano | ceb | creole haïtien | ht |
+| euskara | eu | Filipino | fil |
+| Indonesia | id | Jawa | jv |
+| Melayu | ms | Tiếng Việt | vi |
+| Afrikaans | af | azərbaycan | az |
+| ქართული | ka | հայերեն | hy |
+| Kiswahili | sw | Latin | la |
+| العربية | ar | العربية (العامية المصرية) | ar-EG |
+| فارسی | fa | پښتو | ps |
+| سنڌي | sd | اردو | ur |
+| አማርኛ | am | বাংলা | bn |
+| ਪੰਜਾਬੀ | pa | ગુજરાતી | gu |
+| ଓଡ଼ିଆ | or | தமிழ் | ta |
+| తెలుగు | te | ಕನ್ನಡ | kn |
+| മലയാളം | ml | සිංහල | si |
+| ไทย | th | मराठी | mr |
+| मैथिली | mai | हिन्दी | hi |
+| कोंकणी | kok | नेपाली | ne |
+| मैथिली | mai | မြန်မာ | my |
+
+共支持 **82** 种语言。
+
 ## 端口说明
 
 | 服务 | 端口 | 说明 |
