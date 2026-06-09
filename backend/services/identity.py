@@ -45,14 +45,9 @@ def set_user_number(number: int):
 def generate_user_id() -> str:
     """
     生成唯一用户 ID
-    hash(mac地址 + 用户编号)
+    使用完整 36 位 UUID，不再截断
     """
-    mac = get_mac_address()
-    user_info = load_user_info()
-    user_number = user_info.get("user_number", 1)
-    
-    raw = f"{mac}-{user_number}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+    return str(uuid.uuid4())
 
 def get_user_id() -> str:
     """获取用户 ID（确保用户信息文件存在）"""
