@@ -155,9 +155,11 @@ function Network() {
         setMessage(error.detail || t('network.downloadFailed'))
       }
     } catch (error) {
-      setMessage(t('network.downloadFailed'))
+      setMessage(t('network.downloadFailed') + ': ' + (error.message || ''))
     }
     setDownloadModal({ open: false, peerHost: '', bookId: '' })
+    // 自动滚动到顶部，让用户看到提示消息
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   // 解析分享链接，自动填充 host/port/token
