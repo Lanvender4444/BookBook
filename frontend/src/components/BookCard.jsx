@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom'
+import BauhausCover from './BauhausCover'
 
 function BookCard({ book, onDelete }) {
   const navigate = useNavigate()
 
   return (
     <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
-      <div className="h-40 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-t-lg flex items-center justify-center">
-        <span className="text-white text-4xl">📖</span>
+      <div className="h-40 rounded-t-lg overflow-hidden">
+        <BauhausCover title={book.title} width={400} height={224} />
       </div>
       
       <div className="p-4">
