@@ -5,33 +5,45 @@ import { useState, useEffect, useRef } from 'react';
  * 参考实现: .review/front_type.md
  * 
  * 特性:
- * - 逐字生成打字机效果，每字之间速度随机（0.5x ~ 1.5x）
+ * - 逐字生成打字机效果，每字之间速度随机（0.3x ~ 1.7x），偶尔有长时间停顿
  * - 打完自动退格，退完重新打字，循环往复
  * - 使用 Web Audio API 动态合成微弱打字声（无需外部音频文件）
  * - 使用 JetBrains Mono / Share Tech Mono 开源等宽字体
  * - 带闪烁光标动画
  */
-export default function TypewriterHeading({ text, speed = 100, className = '' }) {
+export default function TypewriterHeading({ text, speed = 180, className = '' }) {
   const [displayedText, setDisplayedText] = useState('');
-  const modeRef = useRef('typing'); // 'typing' | 'deleting'
-  const indexRef = useRef(0);
+  const genRef = useRef(0);
+  const timeoutRef = useRef(null);
   const audioCtxRef = useRef(null);
-  const runningRef = useRef(true);
-
-  // 生成随机延迟（0.5x ~ 1.5x speed）
-  const getRandomDelay = () => speed * (0.5 + Math.random());
 
   useEffect(() => {
-    runningRef.current = true;
-
-    // 初始化 Web Audio API 上下文
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) {
+    if (AudioContext && !audioCtxRef.current) {
       audioCtxRef.current = new AudioContext();
     }
 
-    // 播放微弱打字声 / 退格声
-    const playTypeSound = (isDelete = false) => {
+    // generation 递增，让旧循环自然死亡
+    const myGen = ++genRef.current;
+
+    let idx = 0;
+    let mode = 'typing';
+
+    const getRandomDelay = () => {
+      // 基础范围: 0.3x ~ 1.7x，平均1x，整体偏慢
+      let base = speed * (0.3 + Math.random() * 1.4);
+      // 退格时略快
+      if (mode === 'deleting') base *= 0.8;
+      // 15%概率双倍停顿（像在思考）
+      if (Math.random() < 0.15) base *= 2;
+      // 5%概率三倍停顿
+      if (Math.random() < 0.05) base *= 3;
+      // 1%概率明显卡顿
+      if (Math.random() < 0.01) base *= 5;
+      return base;
+    };
+
+    const playSound = (isDelete = false) => {
       if (!audioCtxRef.current) return;
       try {
         const ctx = audioCtxRef.current;
@@ -39,70 +51,66 @@ export default function TypewriterHeading({ text, speed = 100, className = '' })
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
-        // 退格时音调略低，打字时略高
-        const baseFreq = isDelete ? 400 : 600;
+        const baseFreq = isDelete ? 350 : 550;
         osc.type = 'square';
-        osc.frequency.value = baseFreq + Math.random() * 800;
-        gain.gain.value = 0.03; // 音量 3%
+        osc.frequency.value = baseFreq + Math.random() * 900;
+        gain.gain.value = 0.025;
         osc.start(ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
         osc.stop(ctx.currentTime + 0.05);
-      } catch (e) {
-        // 浏览器自动播放策略限制时静默处理
-      }
+      } catch (e) {}
     };
 
-    // 状态机主循环：typing → deleting → typing → ...
-    const loop = () => {
-      if (!runningRef.current || !text) return;
+    const tick = () => {
+      // 不是当前 generation 就立即停止
+      if (genRef.current !== myGen || !text) return;
 
-      if (modeRef.current === 'typing') {
-        if (indexRef.current < text.length) {
-          const nextChar = text[indexRef.current];
+      if (mode === 'typing') {
+        if (idx < text.length) {
+          const ch = text[idx];
           setDisplayedText(prev => {
-            if (!runningRef.current) return prev;
-            return prev + nextChar;
+            // 再次检查，防止旧循环的 setState 覆盖新循环
+            if (genRef.current !== myGen) return prev;
+            return prev + ch;
           });
-          if (nextChar !== ' ') {
-            playTypeSound(false);
-          }
-          indexRef.current++;
-          setTimeout(loop, getRandomDelay());
+          if (ch !== ' ') playSound(false);
+          idx++;
+          timeoutRef.current = setTimeout(tick, getRandomDelay());
         } else {
-          // 打完了，停顿 2 秒后进入退格
-          modeRef.current = 'deleting';
-          setTimeout(loop, 2000);
+          // 打完了，停顿 2.5 秒后进入退格
+          mode = 'deleting';
+          timeoutRef.current = setTimeout(tick, 2500);
         }
       } else {
         // deleting
-        if (indexRef.current > 0) {
+        if (idx > 0) {
           setDisplayedText(prev => {
-            if (!runningRef.current) return prev;
+            if (genRef.current !== myGen) return prev;
             return prev.slice(0, -1);
           });
-          playTypeSound(true);
-          indexRef.current--;
-          setTimeout(loop, getRandomDelay());
+          playSound(true);
+          idx--;
+          timeoutRef.current = setTimeout(tick, getRandomDelay());
         } else {
-          // 退完了，停顿 0.8 秒后重新打字
-          modeRef.current = 'typing';
-          setTimeout(loop, 800);
+          // 退完了，停顿 1 秒后重新打字
+          mode = 'typing';
+          timeoutRef.current = setTimeout(tick, 1000);
         }
       }
     };
 
-    // 重置状态并从 0 开始
-    modeRef.current = 'typing';
-    indexRef.current = 0;
+    // 重置显示并启动
     setDisplayedText('');
-
-    // 开始主循环
-    const initialDelay = getRandomDelay();
-    const timeoutId = setTimeout(loop, initialDelay);
+    timeoutRef.current = setTimeout(tick, getRandomDelay());
 
     return () => {
-      runningRef.current = false;
-      clearTimeout(timeoutId);
+      // generation 递增，让所有旧 tick 自然死亡
+      genRef.current++;
+      // 清除已排队的 timeout，防止旧 tick 再执行一次
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
     };
   }, [text, speed]);
 
@@ -116,7 +124,7 @@ export default function TypewriterHeading({ text, speed = 100, className = '' })
         display: 'inline-block',
         paddingRight: '4px',
         whiteSpace: 'pre-wrap',
-        minHeight: '2.5rem' // 保持容器高度稳定
+        minHeight: '2.5rem'
       }}
     >
       {displayedText}
