@@ -16,6 +16,7 @@ class Book(Base):
     author_id = Column(String)
     source = Column(String, default="local")
     peer_origin = Column(String, nullable=True)
+    language = Column(String, nullable=True)
 
 class GenerationHistory(Base):
     __tablename__ = "generation_history"
@@ -30,6 +31,7 @@ class GenerationHistory(Base):
     created_at = Column(DateTime, default=func.now())
     completed_at = Column(DateTime, nullable=True)
     author_id = Column(String)
+    language = Column(String, nullable=True)
 
 class ShareToken(Base):
     __tablename__ = "share_tokens"

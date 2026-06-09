@@ -111,7 +111,8 @@ class P2PService:
                     "description": b.description,
                     "chapter_count": len(chapters),
                     "author_id": b.author_id,
-                    "source": b.source
+                    "source": b.source,
+                    "language": b.language
                 })
             writer.write(json.dumps({"status": "ok", "books": books_data}).encode())
             await writer.drain()
@@ -140,6 +141,7 @@ class P2PService:
                     "outline": book.outline,
                     "author_id": book.author_id,
                     "source": "p2p",
+                    "language": book.language,
                     "chapters": [{"index": c["index"], "title": c["title"], "content": c["content"]} for c in chapters]
                 }
             }
@@ -178,6 +180,7 @@ class P2PService:
                             "outline": book.outline,
                             "author_id": book.author_id,
                             "source": "p2p",
+                            "language": book.language,
                             "chapters": [{"index": c["index"], "title": c["title"], "content": c["content"]} for c in chapters]
                         }
                     }

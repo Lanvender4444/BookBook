@@ -10,7 +10,8 @@ function History() {
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState(null)
   const [taskProgress, setTaskProgress] = useState({})
-  const [deleteModal, setDeleteModal] = useState({ open: false, historyId: null })
+  const [deleteModal, setDeleteModal] = useState({ open: false, historyId: null, mode: 'soft' })
+  const [searchQuery, setSearchQuery] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -45,7 +46,7 @@ function History() {
   const fetchHistories = async () => {
     setLoading(true)
     try {
-      const url = filter === 'all' 
+      const url = filter === 'all'
         ? '/api/generate/history'
         : `/api/generate/history?status=${filter}`
       const response = await fetch(url)
@@ -58,21 +59,34 @@ function History() {
     }
   }
 
-  const handleDeleteClick = (e, historyId) => {
+  const handleDeleteClick = (e, historyId, mode = 'soft') => {
     e.stopPropagation()
-    setDeleteModal({ open: true, historyId: historyId })
+    setDeleteModal({ open: true, historyId, mode })
   }
 
   const confirmDelete = async () => {
     const id = deleteModal.historyId
     if (!id) return
     try {
-      await fetch(`/api/generate/history/${id}`, { method: 'DELETE' })
+      if (deleteModal.mode === 'permanent') {
+        await fetch(`/api/generate/history/${id}/permanent`, { method: 'DELETE' })
+      } else {
+        await fetch(`/api/generate/history/${id}/cancel`, { method: 'POST' })
+      }
       fetchHistories()
     } catch (error) {
       console.error('Error deleting history:', error)
     }
-    setDeleteModal({ open: false, historyId: null })
+    setDeleteModal({ open: false, historyId: null, mode: 'soft' })
+  }
+
+  const handleClearDeleted = async () => {
+    try {
+      await fetch('/api/generate/history/clear-deleted', { method: 'DELETE' })
+      fetchHistories()
+    } catch (error) {
+      console.error('Error clearing deleted:', error)
+    }
   }
 
   const handleViewBook = (e, bookId) => {
@@ -106,7 +120,7 @@ function History() {
       pending: { text: t('history.pending'), color: 'bg-yellow-100 text-yellow-700', icon: '⏳' },
       completed: { text: t('history.completed'), color: 'bg-green-100 text-green-700', icon: '✅' },
       failed: { text: t('history.failed'), color: 'bg-red-100 text-red-700', icon: '❌' },
-      deleted: { text: t('history.deleted'), color: 'bg-gray-100 text-gray-500', icon: '🗑️' }
+      deleted: { text: t('history.deleted'), color: 'bg-gray-100 text-gray-500', icon: '' }
     }
     return badges[status] || badges.pending
   }
@@ -124,6 +138,19 @@ function History() {
     { key: 'deleted', label: t('history.deleted') }
   ]
 
+  // 根据搜索关键词过滤
+  const filteredHistories = histories.filter(history => {
+    if (!searchQuery.trim()) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      history.prompt?.toLowerCase().includes(query) ||
+      history.outline?.title?.toLowerCase().includes(query) ||
+      history.status?.toLowerCase().includes(query)
+    )
+  })
+
+  const hasDeleted = histories.some(h => h.status === 'deleted')
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
@@ -139,56 +166,103 @@ function History() {
         </button>
       </div>
 
-      <div className="flex space-x-2 mb-6">
-        {filterOptions.map(({ key, label }) => (
+      {/* 搜索框 */}
+      <div className="mb-4">
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('history.searchPlaceholder') || '搜索历史记录...'}
+            className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
+          />
+          <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-2 text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex space-x-2">
+          {filterOptions.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                filter === key
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* 清空已删除按钮 */}
+        {hasDeleted && (
           <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-              filter === key 
-                ? 'bg-indigo-600 text-white' 
-                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-            }`}
+            onClick={() => {
+              if (window.confirm(t('history.confirmClearDeleted') || '确定要清空所有已删除的记录吗？')) {
+                handleClearDeleted()
+              }
+            }}
+            className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors"
           >
-            {label}
+            {t('history.clearDeleted') || '清空已删除'}
           </button>
-        ))}
+        )}
       </div>
 
       {loading ? (
         <div className="text-center py-12 text-gray-500">Loading...</div>
-      ) : histories.length === 0 ? (
+      ) : filteredHistories.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-gray-400 text-6xl mb-4">📝</div>
-          <p className="text-gray-500">{t('history.noRecords')}</p>
-          <button
-            onClick={() => navigate('/generate')}
-            className="mt-4 text-indigo-600 hover:text-indigo-700"
-          >
-            {t('history.goGenerate')}
-          </button>
+          <p className="text-gray-500">
+            {searchQuery ? t('history.noSearchResults') || '没有找到匹配的记录' : t('history.noRecords')}
+          </p>
+          {!searchQuery && (
+            <button
+              onClick={() => navigate('/generate')}
+              className="mt-4 text-indigo-600 hover:text-indigo-700"
+            >
+              {t('history.goGenerate')}
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {histories.map((history) => {
+          {filteredHistories.map((history) => {
             const statusInfo = getStatusBadge(history.status)
             const isExpanded = expandedId === history.id
-            
+
             return (
-              <div 
-                key={history.id} 
+              <div
+                key={history.id}
                 className={`bg-white rounded-lg border transition-all ${
                   isExpanded ? 'shadow-md border-indigo-200' : 'shadow-sm border-gray-100 hover:shadow-md hover:border-gray-200'
                 }`}
               >
-                <div 
+                <div
                   className="p-4 flex items-center gap-4 cursor-pointer select-none"
                   onClick={() => toggleExpand(history.id)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
-                        {statusInfo.icon} {statusInfo.text}
+                        {statusInfo.icon && <span className="mr-1">{statusInfo.icon}</span>}
+                        {statusInfo.text}
                       </span>
                       <span className="text-xs text-gray-400">#{history.id}</span>
                     </div>
@@ -202,7 +276,7 @@ function History() {
                           className="px-3 py-1.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg">
                           {t('history.viewProgress')}
                         </button>
-                        <button type="button" onClick={(e) => handleDeleteClick(e, history.id)}
+                        <button type="button" onClick={(e) => handleDeleteClick(e, history.id, 'soft')}
                           className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg">
                           {t('history.cancel')}
                         </button>
@@ -220,12 +294,20 @@ function History() {
                         {t('history.regenerate')}
                       </button>
                     )}
-                    <button type="button" onClick={(e) => handleDeleteClick(e, history.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title={t('history.delete')}>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    {/* 删除按钮：已删除记录用永久删除，其他用取消 */}
+                    {history.status === 'deleted' ? (
+                      <button type="button" onClick={(e) => handleDeleteClick(e, history.id, 'permanent')}
+                        className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg">
+                        {t('history.delete')}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={(e) => handleDeleteClick(e, history.id, 'soft')}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title={t('history.delete')}>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
 
                   <svg className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -258,6 +340,12 @@ function History() {
                             <p className="text-gray-800">{history.requirements.word_count || '-'}字</p>
                           </div>
                         </>
+                      )}
+                      {history.language && (
+                        <div>
+                          <span className="text-gray-500">{t('generate.language')}</span>
+                          <p className="text-gray-800">{history.language}</p>
+                        </div>
                       )}
                     </div>
 
@@ -312,7 +400,7 @@ function History() {
                               <span>{t('history.totalChapters').replace('{total}', taskProgress[history.id].progress.total_chapters)}</span>
                             </div>
                             <div className="w-full bg-blue-200 rounded-full h-2">
-                              <div 
+                              <div
                                 className="bg-blue-500 h-2 rounded-full transition-all duration-300"
                                 style={{ width: `${(taskProgress[history.id].progress.current_chapter / taskProgress[history.id].progress.total_chapters) * 100}%` }}
                               ></div>
@@ -331,13 +419,13 @@ function History() {
 
       <ConfirmModal
         isOpen={deleteModal.open}
-        title={t('history.confirmDeleteTitle')}
-        message={t('history.confirmDelete')}
+        title={deleteModal.mode === 'permanent' ? (t('history.confirmPermanentDeleteTitle') || '永久删除') : t('history.confirmDeleteTitle')}
+        message={deleteModal.mode === 'permanent' ? (t('history.confirmPermanentDelete') || '确定要永久删除这条记录吗？此操作不可撤销。') : t('history.confirmDelete')}
         confirmText={t('modal.confirm')}
         cancelText={t('modal.cancel')}
         danger={true}
         onConfirm={confirmDelete}
-        onCancel={() => setDeleteModal({ open: false, historyId: null })}
+        onCancel={() => setDeleteModal({ open: false, historyId: null, mode: 'soft' })}
       />
     </div>
   )

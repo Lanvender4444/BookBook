@@ -45,21 +45,16 @@ def set_user_number(number: int):
 def generate_user_id() -> str:
     """
     生成唯一用户 ID
-    hash(mac地址 + 用户编号)
+    使用完整 36 位 UUID，持久化保存，每次调用返回同一 ID
     """
-    mac = get_mac_address()
-    user_info = load_user_info()
-    user_number = user_info.get("user_number", 1)
-    
-    raw = f"{mac}-{user_number}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+    info = load_user_info()
+    if "user_id" not in info:
+        info["user_id"] = str(uuid.uuid4())
+        save_user_info(info)
+    return info["user_id"]
 
 def get_user_id() -> str:
     """获取用户 ID（确保用户信息文件存在）"""
-    # 确保用户信息文件存在
-    if not USER_INFO_FILE.exists():
-        save_user_info({"user_number": 1})
-    
     return generate_user_id()
 
 def get_machine_info() -> dict:

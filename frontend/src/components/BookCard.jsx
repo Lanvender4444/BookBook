@@ -3,6 +3,27 @@ import { useNavigate } from 'react-router-dom'
 function BookCard({ book, onDelete }) {
   const navigate = useNavigate()
 
+  // 语言代码到显示名称的简单映射
+  const langNames = {
+    'zh-CN': '简体中文',
+    'zh-TW': '繁體中文',
+    'en': 'English',
+    'ja': '日本語',
+    'ko': '한국어',
+    'fr': 'Français',
+    'es': 'Español',
+    'de': 'Deutsch',
+    'it': 'Italiano',
+    'pt-BR': 'Português',
+    'ru': 'Русский',
+    'ar': 'العربية',
+    'hi': 'हिन्दी',
+    'th': 'ไทย',
+    'vi': 'Tiếng Việt'
+  }
+
+  const langLabel = langNames[book.language] || book.language || ''
+
   return (
     <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
       <div className="h-40 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-t-lg flex items-center justify-center">
@@ -15,11 +36,18 @@ function BookCard({ book, onDelete }) {
         
         <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
           <span>{book.outline?.chapters?.length || 0} 章</span>
-          <span className={`px-2 py-1 rounded ${
-            book.source === 'local' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-          }`}>
-            {book.source === 'local' ? '本地' : 'P2P'}
-          </span>
+          <div className="flex gap-1">
+            {langLabel && (
+              <span className="px-2 py-1 rounded bg-gray-100 text-gray-600">
+                {langLabel}
+              </span>
+            )}
+            <span className={`px-2 py-1 rounded ${
+              book.source === 'local' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+            }`}>
+              {book.source === 'local' ? '本地' : 'P2P'}
+            </span>
+          </div>
         </div>
 
         <div className="flex space-x-2">

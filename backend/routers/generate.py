@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=2)
 
-def run_generation_task(history_id: int, prompt: str, requirements: dict, user_id: str):
+def run_generation_task(history_id: int, prompt: str, requirements: dict, user_id: str, language: str = "zh-CN"):
     """在后台线程中运行生成任务"""
     from services.llm_service import generate_outline_sync, generate_chapter_sync
     from services.book_builder import save_book_sync
@@ -120,7 +120,7 @@ def run_generation_task(history_id: int, prompt: str, requirements: dict, user_i
             }
         
         # 保存书籍
-        book_id = save_book_sync(db, outline, chapters, user_id)
+        book_id = save_book_sync(db, outline, chapters, user_id, language)
         
         # 更新历史记录状态
         db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update({
@@ -162,12 +162,16 @@ def run_generation_task(history_id: int, prompt: str, requirements: dict, user_i
 async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db)):
     user_id = generate_user_id()
     
+    # 从 requirements 中提取语言信息
+    language = request.requirements.get("language", "zh-CN")
+    
     # 创建历史记录
     history = GenerationHistory(
         prompt=request.prompt,
         requirements=request.requirements,
         status="pending",
-        author_id=user_id
+        author_id=user_id,
+        language=language
     )
     db.add(history)
     db.commit()
@@ -190,7 +194,8 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         history_id, 
         request.prompt, 
         request.requirements,
-        user_id
+        user_id,
+        language
     )
     
     async def event_generator():
@@ -364,13 +369,15 @@ def get_history_detail(history_id: int, db: Session = Depends(get_db)):
         "completed_at": history.completed_at,
         "author_id": history.author_id,
         "book_id": history.book_id,
+        "language": history.language,
         "task_status": task_status.get(history_id)
     }
     return result
 
 
-@router.delete("/history/{history_id}")
-def delete_history(history_id: int, db: Session = Depends(get_db)):
+@router.post("/history/{history_id}/cancel")
+def cancel_history(history_id: int, db: Session = Depends(get_db)):
+    """取消进行中的生成任务，标记为已删除"""
     history = db.query(GenerationHistory).filter(GenerationHistory.id == history_id).first()
     if not history:
         raise HTTPException(status_code=404, detail="History not found")
@@ -381,4 +388,40 @@ def delete_history(history_id: int, db: Session = Depends(get_db)):
     history.status = "deleted"
     db.commit()
     
-    return {"message": "History deleted"}
+    return {"message": "History cancelled"}
+
+@router.delete("/history/{history_id}/permanent")
+def delete_history_permanent(history_id: int, db: Session = Depends(get_db)):
+    """永久删除历史记录"""
+    history = db.query(GenerationHistory).filter(GenerationHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="History not found")
+    
+    # 如果任务还在运行，先取消
+    if history.status == "pending" and history_id in task_status:
+        task_status[history_id]["cancelled"] = True
+        del task_status[history_id]
+    
+    db.delete(history)
+    db.commit()
+    
+    return {"message": "History permanently deleted"}
+
+@router.delete("/history/clear-deleted")
+def clear_deleted_history(db: Session = Depends(get_db)):
+    """清空所有已删除的历史记录"""
+    user_id = generate_user_id()
+    deleted = db.query(GenerationHistory).filter(
+        GenerationHistory.author_id == user_id,
+        GenerationHistory.status == "deleted"
+    ).all()
+    
+    count = 0
+    for h in deleted:
+        if h.id in task_status:
+            del task_status[h.id]
+        db.delete(h)
+        count += 1
+    
+    db.commit()
+    return {"message": f"Cleared {count} deleted records"}
