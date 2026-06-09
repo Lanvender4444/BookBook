@@ -22,6 +22,7 @@ class RedeemRequest(BaseModel):
     token: str
     host: str
     port: int = 47833
+    local_host: str = None
 
 
 @router.get("/")
@@ -123,6 +124,7 @@ def get_share_info(token: str):
         "created_at": info["created_at"],
         "expires_at": info["expires_at"],
         "host": info["host"],
+        "public_host": info.get("public_host", ""),
         "port": info["port"]
     }
 
@@ -132,9 +134,28 @@ async def redeem_share_token(req: RedeemRequest):
     if not share_info:
         raise HTTPException(status_code=404, detail="Share token not found or expired")
 
-    result = await p2p_service.fetch_by_share_token(req.host, req.token, req.port)
+    # 优先尝试局域网地址，失败再尝试公网地址
+    hosts_to_try = []
+    if req.local_host:
+        hosts_to_try.append(req.local_host)
+    if req.host:
+        hosts_to_try.append(req.host)
+
+    result = None
+    last_error = None
+    for host in hosts_to_try:
+        try:
+            result = await p2p_service.fetch_by_share_token(host, req.token, req.port)
+            if result:
+                break
+        except Exception as e:
+            last_error = str(e)
+
     if not result:
-        raise HTTPException(status_code=404, detail="Failed to fetch book from peer")
+        detail = "Failed to fetch book from peer"
+        if last_error:
+            detail += f": {last_error}"
+        raise HTTPException(status_code=404, detail=detail)
 
     db = SessionLocal()
     try:
@@ -159,8 +180,12 @@ async def redeem_share_token(req: RedeemRequest):
                     existing = db.query(Book).filter(Book.id == meta["id"]).first()
                     if existing:
                         continue
-                    # 获取每本书的完整内容
-                    book_data = await p2p_service.fetch_book(req.host, meta["id"], req.port)
+                    # 获取每本书的完整内容（优先局域网地址）
+                    book_data = None
+                    for host in hosts_to_try:
+                        book_data = await p2p_service.fetch_book(host, meta["id"], req.port)
+                        if book_data:
+                            break
                     if book_data:
                         saved_id = save_p2p_book(db, book_data, book_data.get("author_id", "p2p"))
                         saved_ids.append(saved_id)

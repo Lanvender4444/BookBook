@@ -11,7 +11,7 @@ function Network() {
   const [connectForm, setConnectForm] = useState({ host: '', port: 47833 })
   const [peerBooks, setPeerBooks] = useState([])
   const [connecting, setConnecting] = useState(false)
-  const [redeemForm, setRedeemForm] = useState({ token: '', host: '', port: 47833 })
+  const [redeemForm, setRedeemForm] = useState({ token: '', host: '', local_host: '', port: 47833 })
   const [redeeming, setRedeeming] = useState(false)
   const [downloadModal, setDownloadModal] = useState({ open: false, peerHost: '', bookId: '' })
   const [message, setMessage] = useState('')
@@ -148,12 +148,14 @@ function Network() {
         const url = new URL(link.replace('bookbook://', 'http://'))
         const token = url.searchParams.get('token')
         const host = url.searchParams.get('host')
+        const public_host = url.searchParams.get('public_host')
         const port = url.searchParams.get('port')
         if (token) {
           setRedeemForm(prev => ({
             ...prev,
             token,
-            host: host || prev.host,
+            host: public_host || host || prev.host,
+            local_host: host || prev.host,
             port: port ? parseInt(port) : prev.port
           }))
           setMessage(t('network.autoFilled'))
@@ -182,6 +184,7 @@ function Network() {
         body: JSON.stringify({
           token: redeemForm.token,
           host: redeemForm.host,
+          local_host: redeemForm.local_host,
           port: redeemForm.port
         })
       })
@@ -357,6 +360,7 @@ function Network() {
                     {token.host && (
                       <div className="text-xs text-gray-400 mb-1">
                         {t('network.currentIp')}: {token.host}:{token.port}
+                        {token.public_host && ` (公网: ${token.public_host}:${token.port})`}
                       </div>
                     )}
                     {token.expires_at && (
