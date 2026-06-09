@@ -6,6 +6,7 @@ import ProgressBar from '../components/ProgressBar'
 import CustomSelect from '../components/CustomSelect'
 import CustomInput from '../components/CustomInput'
 import TypewriterHeading from '../components/TypewriterHeading'
+import TypewriterPlaceholder from '../components/TypewriterPlaceholder'
 
 function Generate() {
   const { t, locale } = useI18n()
@@ -15,7 +16,7 @@ function Generate() {
     difficulty: searchParams.get('difficulty') || 'medium',
     word_count: searchParams.get('word_count') || '5000',
     chapter_count: searchParams.get('chapter_count') || '5-8',
-    style: searchParams.get('style') || '科普向'
+    style: searchParams.get('style') || ''
   })
   const [outline, setOutline] = useState(null)
   const [chapters, setChapters] = useState([])
@@ -200,19 +201,28 @@ function Generate() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <TypewriterHeading text={t('generate.title')} speed={['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 250 : 120} className="text-gray-900 mb-8" />
+      <TypewriterHeading text={t('generate.title')} speed={['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 200 : 120} className="text-gray-900 mb-8" />
       
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           {t('generate.description')}
         </label>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 hover:border-gray-400 transition-all"
-          placeholder={t('generate.placeholder')}
-          disabled={generating}
-        />
+        <div className="relative">
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 hover:border-gray-400 transition-all bg-transparent relative z-10"
+            disabled={generating}
+          />
+          {!prompt && !generating && (
+            <div className="absolute top-2 left-3 z-0 pointer-events-none text-gray-400 text-sm">
+              <TypewriterPlaceholder
+                text={t('generate.placeholder')}
+                speed={['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 160 : 80}
+              />
+            </div>
+          )}
+        </div>
         
         <div className="mt-4 grid grid-cols-2 gap-4">
           <div>
