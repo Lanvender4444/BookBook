@@ -200,7 +200,7 @@ function Generate() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <TypewriterHeading text={t('generate.title')} speed={250} className="text-gray-900 mb-8" />
+      <TypewriterHeading text={t('generate.title')} speed={['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 250 : 120} className="text-gray-900 mb-8" />
       
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
