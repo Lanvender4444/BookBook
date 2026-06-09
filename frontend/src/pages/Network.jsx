@@ -93,11 +93,21 @@ function Network() {
   }
 
   const handleConnect = async () => {
-    if (!connectForm.host) return
+    let host = connectForm.host.trim()
+    let port = connectForm.port
+    // 如果用户输入了 host:port 格式，自动拆分
+    if (host.includes(':')) {
+      const parts = host.split(':')
+      if (parts.length === 2 && !isNaN(parseInt(parts[1]))) {
+        host = parts[0]
+        port = parseInt(parts[1])
+      }
+    }
+    if (!host) return
     setConnecting(true)
     setMessage('')
     try {
-      const response = await fetch(`/api/peers/${connectForm.host}/books?port=${connectForm.port}`, {
+      const response = await fetch(`/api/peers/${host}/books?port=${port}`, {
         method: 'POST'
       })
       if (response.ok) {
@@ -121,9 +131,18 @@ function Network() {
   }
 
   const confirmDownload = async () => {
-    const { peerHost, bookId } = downloadModal
+    let { peerHost, bookId } = downloadModal
+    let port = connectForm.port
+    // 自动拆分 host:port
+    if (peerHost && peerHost.includes(':')) {
+      const parts = peerHost.split(':')
+      if (parts.length === 2 && !isNaN(parseInt(parts[1]))) {
+        peerHost = parts[0]
+        port = parseInt(parts[1])
+      }
+    }
     try {
-      const response = await fetch(`/api/peers/${peerHost}/books/${bookId}/download?port=${connectForm.port}`, {
+      const response = await fetch(`/api/peers/${peerHost}/books/${bookId}/download?port=${port}`, {
         method: 'POST'
       })
       if (response.ok) {

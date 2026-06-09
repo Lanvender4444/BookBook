@@ -130,16 +130,15 @@ def get_share_info(token: str):
 
 @router.post("/redeem")
 async def redeem_share_token(req: RedeemRequest):
-    share_info = p2p_service.get_share_info(req.token)
-    if not share_info:
-        raise HTTPException(status_code=404, detail="Share token not found or expired")
-
-    # 优先尝试局域网地址，失败再尝试公网地址
+    # 接收方本地不需要验证 token，直接连接发送方验证
     hosts_to_try = []
     if req.local_host:
         hosts_to_try.append(req.local_host)
     if req.host:
         hosts_to_try.append(req.host)
+
+    if not hosts_to_try:
+        raise HTTPException(status_code=400, detail="host is required")
 
     result = None
     last_error = None
