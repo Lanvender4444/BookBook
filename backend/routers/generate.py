@@ -375,8 +375,9 @@ def get_history_detail(history_id: int, db: Session = Depends(get_db)):
     return result
 
 
-@router.delete("/history/{history_id}")
-def delete_history(history_id: int, db: Session = Depends(get_db)):
+@router.post("/history/{history_id}/cancel")
+def cancel_history(history_id: int, db: Session = Depends(get_db)):
+    """取消进行中的生成任务，标记为已删除"""
     history = db.query(GenerationHistory).filter(GenerationHistory.id == history_id).first()
     if not history:
         raise HTTPException(status_code=404, detail="History not found")
@@ -387,4 +388,40 @@ def delete_history(history_id: int, db: Session = Depends(get_db)):
     history.status = "deleted"
     db.commit()
     
-    return {"message": "History deleted"}
+    return {"message": "History cancelled"}
+
+@router.delete("/history/{history_id}/permanent")
+def delete_history_permanent(history_id: int, db: Session = Depends(get_db)):
+    """永久删除历史记录"""
+    history = db.query(GenerationHistory).filter(GenerationHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="History not found")
+    
+    # 如果任务还在运行，先取消
+    if history.status == "pending" and history_id in task_status:
+        task_status[history_id]["cancelled"] = True
+        del task_status[history_id]
+    
+    db.delete(history)
+    db.commit()
+    
+    return {"message": "History permanently deleted"}
+
+@router.delete("/history/clear-deleted")
+def clear_deleted_history(db: Session = Depends(get_db)):
+    """清空所有已删除的历史记录"""
+    user_id = generate_user_id()
+    deleted = db.query(GenerationHistory).filter(
+        GenerationHistory.author_id == user_id,
+        GenerationHistory.status == "deleted"
+    ).all()
+    
+    count = 0
+    for h in deleted:
+        if h.id in task_status:
+            del task_status[h.id]
+        db.delete(h)
+        count += 1
+    
+    db.commit()
+    return {"message": f"Cleared {count} deleted records"}

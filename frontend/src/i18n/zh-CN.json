@@ -57,7 +57,13 @@
     "outline": "大纲",
     "error": "错误",
     "confirmDelete": "确定要删除这条记录吗？此操作不可撤销。",
-    "confirmDeleteTitle": "删除记录"
+    "confirmDeleteTitle": "删除记录",
+    "searchPlaceholder": "搜索历史记录...",
+    "noSearchResults": "没有找到匹配的记录",
+    "clearDeleted": "清空已删除",
+    "confirmClearDeleted": "确定要清空所有已删除的记录吗？",
+    "confirmPermanentDeleteTitle": "永久删除",
+    "confirmPermanentDelete": "确定要永久删除这条记录吗？此操作不可撤销。"
   },
   "library": {
     "title": "我的书库",
