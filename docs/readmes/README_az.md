@@ -1,5 +1,7 @@
 # BookBook - AI eBook Yaradıcı
 
+> **AI tərəfindən dəstəklənən eBook yaradıcısı ki, sizə AI köməyi ilə gözəl eBook-lar yaratmağa imkan verir.**
+
 ## Sürətli Başlanğıc
 ### Ətraf Mühit Dəyişənlərini Konfiqurasiya Edin
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend http://localhost:5173 ünvanında işləyəcək
 
-## Sürətli Başlanğıc Skriptləri (Windows)
 
-### Backend-i Bir Kliklə Başladın
-
-`start_backend.bat` yaradın:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Frontend-i Bir Kliklə Başladın
-
-`start_frontend.bat` yaradın:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Bütün Xidmətləri Bir Kliklə Başladın
-
-`start_all.bat` yaradın:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

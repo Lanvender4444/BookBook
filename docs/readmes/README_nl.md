@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generator
 
+> **Een AI-aangedreven eBook-generator waarmee u mooie eBooks kunt maken met AI-ondersteuning.**
+
 ## Snelle Start
 ### Omgevingsvariabelen Configureren
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend draait op http://localhost:5173
 
-## Snelle Start Scripts (Windows)
 
-### Backend Starten met Één Klik
-
-Maak `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Frontend Starten met Één Klik
-
-Maak `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Alle Services Starten met Één Klik
-
-Maak `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

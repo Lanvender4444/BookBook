@@ -1,5 +1,7 @@
 # BookBook - AI eBook Генератор
 
+> **AI генератор за eBooks кој ви овозможува да создавате убави eBooks со помош на AI.**
+
 ## Брз Старт
 ### Конфигурација на Променливи на Опкружувањето
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend ќе работи на http://localhost:5173
 
-## Брзи Старт Скрипти (Windows)
 
-### Стартување на Backend со Еден Клик
-
-Креирајте `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Стартување на Frontend со Еден Клик
-
-Креирајте `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Стартување на Сите Сервиси со Еден Клик
-
-Креирајте `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

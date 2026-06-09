@@ -1,5 +1,7 @@
 # BookBook - AI eBook Oluşturucu
 
+> **AI destekli eBook oluşturucu ile güzel eBook'ları AI yardımıyla oluşturabilirsiniz.**
+
 ## Hızlı Başlangıç
 ### Çevresel Değişkenleri Yapılandırın
 ```

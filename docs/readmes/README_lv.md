@@ -1,5 +1,7 @@
 # BookBook - AI eBook Ģenerators
 
+> **AI eBook ģenerators, kas ļauj veidot skaistas ebooks ar AI atbalstu.**
+
 ## Ātra Sākšana
 ### Vides Mainīgo Konfigurēšana
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend darbosies adresē http://localhost:5173
 
-## Ātrās Palaišanas Skripti (Windows)
 
-### Backend Palaišana ar Vienu Klikšķi
-
-Izveidot `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Frontend Palaišana ar Vienu Klikšķi
-
-Izveidot `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Visu Pakalpojumu Palaišana ar Vienu Klikšķi
-
-Izveidot `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

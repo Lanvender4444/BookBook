@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generator
 
+> **En AI-drevet eBook-generator, der lader dig smukke e-bøger med AI-understøttelse.**
+
 ## Hurtig Start
 ### Konfigurer Miljøvariable
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend kører på http://localhost:5173
 
-## Hurtigstartsskripter (Windows)
 
-### Start Backend med ét klik
-
-Opret `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Start Frontend med ét klik
-
-Opret `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Start alle tjenester med ét klik
-
-Opret `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

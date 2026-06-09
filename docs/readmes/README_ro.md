@@ -1,5 +1,7 @@
 # BookBook - Generator de eBooks AI
 
+> **Un generator de eBooks cu IA care vă permite să creați eBooks frumoase cu asistență IA.**
+
 ## Pornire Rapidă
 ### Configurarea Variabilelor de Mediu
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend-ul va rula la http://localhost:5173
 
-## Scripturi de Pornire Rapidă (Windows)
 
-### Pornirea Backend cu Un Singur Clic
-
-Creează `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Pornirea Frontend cu Un Singur Clic
-
-Creează `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Pornirea Tuturor Serviciilor cu Un Singur Clic
-
-Creează `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

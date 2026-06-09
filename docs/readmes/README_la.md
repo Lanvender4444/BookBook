@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generator
 
+> **AI liber eBook generator qui vos sinit creare pulchros eBooks cum AI auxilio.**
+
 ## Initium Celer
 ### Variabiles Ambientis Configurare
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend currere apud http://localhost:5173
 
-## Scripta Initii Celeris (Windows)
 
-### Backend Unico Click Incipere
-
-`start_backend.bat` creare:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Frontend Unico Click Incipere
-
-`start_frontend.bat` creare:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Omnia Servitia Unico Click Incipere
-
-`start_all.bat` creare:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

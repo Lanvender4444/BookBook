@@ -1,5 +1,7 @@
 # BookBook - Trình tạo Sách điện tử AI
 
+> **Trình tạo sách điện tử AI giúp bạn tạo sách điện tử đẹp mắt với sự hỗ trợ của AI.**
+
 ## Bắt đầu nhanh
 ### Cấu hình Biến Môi trường
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend sẽ chạy tại http://localhost:5173
 
-## Script Khởi động Nhanh (Windows)
 
-### Khởi động Backend bằng một cú nhấp
-
-Tạo `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Khởi động Frontend bằng một cú nhấp
-
-Tạo `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Khởi động Tất cả Dịch vụ bằng một cú nhấp
-
-Tạo `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

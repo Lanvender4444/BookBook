@@ -1,5 +1,7 @@
 # BookBook - AI eBook Sortzailea
 
+> **AI laguntzaz ebook ederrak sortzen laguntzen duen eBook sortzailea.**
+
 ## Hasiera Azkarrak
 ### Inguruko Aldagaiak Konfiguratu
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend http://localhost:5173 helbidean ibiliko da
 
-## Hasiera Azkarraren Script-ak (Windows)
 
-### Backend Klik Batekin Hasi
-
-`start_backend.bat` sortu:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Frontend Klik Batekin Hasi
-
-`start_frontend.bat` sortu:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Zerbitzu Guztiak Klik Batekin Hasi
-
-`start_all.bat` sortu:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

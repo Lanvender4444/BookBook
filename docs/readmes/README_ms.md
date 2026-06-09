@@ -1,5 +1,7 @@
 # BookBook - Penjana eBook AI
 
+> **Penjana eBook AI yang membolehkan anda membuat eBook cantik dengan bantuan AI.**
+
 ## Mula Pantas
 ### Konfigurasikan Pemboleh Ubah Persekitaran
 ```

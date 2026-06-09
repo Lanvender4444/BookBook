@@ -1,5 +1,7 @@
 # BookBook - Générateur de Livres Électroniques IA
 
+> **Un générateur de livres électroniques alimenté par l'IA, pour créer de beaux ebooks avec l'assistance de l'IA.**
+
 ## Démarrage Rapide
 ### Configurer les Variables d'Environnement
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Le frontend fonctionnera sur http://localhost:5173
 
-## Scripts de Démarrage Rapide (Windows)
 
-### Démarrer le Backend en Un Clic
-
-Créer `start_backend.bat` :
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Démarrer le Frontend en Un Clic
-
-Créer `start_frontend.bat` :
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Démarrer Tous les Services en Un Clic
-
-Créer `start_all.bat` :
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

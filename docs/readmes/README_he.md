@@ -1,5 +1,7 @@
 # BookBook - AI eBook מחולל
 
+> **An AI-powered eBook generator that lets you create beautiful ebooks with AI assistance.**
+
 ## התחלה מהירה
 ### הגדרת משתני סביבה
 ```

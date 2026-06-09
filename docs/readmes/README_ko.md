@@ -1,5 +1,7 @@
 # BookBook - AI 전자책 생성기
 
+> **AI 기반 전자책 생성기 - AI의 도움으로 아름다운 전자책을 쉽게 만들 수 있습니다.**
+
 ## 빠른 시작
 ### 환경 변수 설정
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 프론트엔드는 http://localhost:5173 에서 실행됩니다
 
-## 빠른 시작 스크립트 (Windows)
 
-### 원클릭 백엔드 시작
-
-`start_backend.bat` 생성:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### 원클릭 프론트엔드 시작
-
-`start_frontend.bat` 생성:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### 모든 서비스 원클릭 시작
-
-`start_all.bat` 생성:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

@@ -1,5 +1,7 @@
 # BookBook - KI-E-Book-Generator
 
+> **Ein KI-gestützter eBook-Generator, mit dem Sie schöne eBooks mit KI-Unterstützung erstellen können.**
+
 ## Schnellstart
 ### Umgebungsvariablen Konfigurieren
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Das Frontend läuft unter http://localhost:5173
 
-## Schnellstart-Skripte (Windows)
 
-### Backend mit Einem Klick Starten
-
-`start_backend.bat` erstellen:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Frontend mit Einem Klick Starten
-
-`start_frontend.bat` erstellen:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Alle Dienste mit Einem Klick Starten
-
-`start_all.bat` erstellen:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

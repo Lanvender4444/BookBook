@@ -1,5 +1,7 @@
 # BookBook - AI eBook Gjenerator
 
+> **Një gjenerator eBooks me AI që ju lejon të krijoni eBooks të bukur me ndihmën e AI.**
+
 ## Fillimi i Shpejtë
 ### Konfigurimi i Variablave të Mjedisit
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend do të funksionojë në http://localhost:5173
 
-## Skriptet e Fillimit të Shpejtë (Windows)
 
-### Fillimi i Backend me një Klik
-
-Krijoni `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Fillimi i Frontend me një Klik
-
-Krijoni `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Fillimi i të Gjitha Shërbimeve me një Klik
-
-Krijoni `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

@@ -6,6 +6,10 @@
 
 ---
 
+> **📖 BookBook 是一款 AI 驱动的电子书生成器，让你轻松创建精美的电子书。**
+>
+> **BookBook is an AI-powered eBook generator that lets you create beautiful ebooks with AI assistance.**
+
 ## 快速开始
 ### 配置环境变量
 ```
@@ -55,48 +59,6 @@ cd frontend
 npm run dev
 ```
 前端将运行在 http://localhost:5173
-
-## 快速启动脚本（Windows）
-
-### 一键启动后端
-
-创建 `start_backend.bat`：
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### 一键启动前端
-
-创建 `start_frontend.bat`：
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### 一键启动全部服务
-
-创建 `start_all.bat`：
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
 
 ---
 

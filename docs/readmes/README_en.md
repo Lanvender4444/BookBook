@@ -1,5 +1,7 @@
 # BookBook - An AI eBook Generator
 
+> **An AI-powered eBook generator that lets you create beautiful ebooks with AI assistance.**
+
 ## Quick Start
 ### Configure Environment Variables
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend will run at http://localhost:5173
 
-## Quick Launch Scripts (Windows)
 
-### One-Click Start Backend
-
-Create `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### One-Click Start Frontend
-
-Create `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### One-Click Start All Services
-
-Create `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

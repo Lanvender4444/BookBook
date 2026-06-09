@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generátor
 
+> **AI-alapú eBook generátor, amely lehetővé teszi szép eBook-ok létrehozását AI segítséggel.**
+
 ## Gyors Kezdés
 ### Környezeti Változók Beállítása
 ```

@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generator
 
+> **AI-powered eBook generator sing ngidhang sampeyan gawe eBooks apik kanthi bantuan AI.**
+
 ## Wiwitan Cepet
 ### Konfigurasi Variabel Lingkungan
 ```

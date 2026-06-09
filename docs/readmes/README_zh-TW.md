@@ -1,5 +1,7 @@
 # BookBook - AI電子書產生器
 
+> **AI驅動的電子書產生器，讓你輕鬆創建精美的電子書。**
+
 ## 快速開始
 ### 設定環境變數
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 前端將運行在 http://localhost:5173
 
-## 快速啟動腳本（Windows）
 
-### 一鍵啟動後端
-
-建立 `start_backend.bat`：
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### 一鍵啟動前端
-
-建立 `start_frontend.bat`：
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### 一鍵啟動全部服務
-
-建立 `start_all.bat`：
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

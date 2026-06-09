@@ -1,5 +1,7 @@
 # BookBook - AI電子書籍ジェネレーター
 
+> **AI搭載の電子書籍ジェネレーター - AIの力で美しい電子書籍を簡単に作成できます。**
+
 ## クイックスタート
 ### 環境変数の設定
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 フロントエンドは http://localhost:5173 で実行されます
 
-## クイック起動スクリプト（Windows）
 
-### バックエンドをワンクリックで起動
-
-`start_backend.bat`を作成：
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### フロントエンドをワンクリックで起動
-
-`start_frontend.bat`を作成：
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### すべてのサービスをワンクリックで起動
-
-`start_all.bat`を作成：
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

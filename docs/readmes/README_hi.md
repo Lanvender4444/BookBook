@@ -1,5 +1,7 @@
 # BookBook - AI eBook जनरेटर
 
+> **AI संचालित eBook जनरेटर जो आपको AI सहायता से सुंदर eBooks बनाने में मदद करता है।**
+
 ## त्वरित शुरुआत
 ### वातावरण चर कॉन्फ़िगर करें
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 फ्रंटएंड http://localhost:5173 पर चलेगा
 
-## त्वरित शुरुआत स्क्रिप्ट (Windows)
 
-### एक क्लिक में बैकएंड शुरू करें
-
-`start_backend.bat` बनाएं:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### एक क्लिक में फ्रंटएंड शुरू करें
-
-`start_frontend.bat` बनाएं:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### एक क्लिक में सभी सेवाएँ शुरू करें
-
-`start_all.bat` बनाएं:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

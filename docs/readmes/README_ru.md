@@ -1,5 +1,7 @@
 # BookBook - ИИ Генератор Электронных Книг
 
+> **ИИ-генератор электронных книг, который позволяет создавать красивые ebooks с помощью ИИ.**
+
 ## Быстрый Старт
 ### Настройка Переменных Окружения
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Фронтенд будет работать по адресу http://localhost:5173
 
-## Скрипты Быстрого Запуска (Windows)
 
-### Однократный Запуск Бэкенда
-
-Создать `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Однократный Запуск Фронтенда
-
-Создать `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Однократный Запуск Всех Сервисов
-
-Создать `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

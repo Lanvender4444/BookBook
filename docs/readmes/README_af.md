@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generator
 
+> **AI-aangedrewe eBook-generator wat jou toelaat om mooi eBoeke te skep met AI-ondersteuning.**
+
 ## Vinnige Begin
 ### Omgewing Veranderlikes Konfigureer
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Frontend sal by http://localhost:5173 loop
 
-## Vinnige Begin Skripte (Windows)
 
-### Begin Backend met Een Klik
-
-Skep `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Begin Frontend met Een Klik
-
-Skep `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Begin Alle Dienste met Een Klik
-
-Skep `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

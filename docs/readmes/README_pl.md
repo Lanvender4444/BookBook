@@ -1,5 +1,7 @@
 # BookBook - Generator eBooków AI
 
+> **Generator eBooków AI, który pozwala tworzyć piękne ebooki z pomocą sztucznej inteligencji.**
+
 ## Szybki Start
 ### Konfiguracja Zmiennych Środowiskowych
 ```

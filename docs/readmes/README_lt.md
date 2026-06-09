@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generatorius
 
+> **AI eBook generatorius, leidžiantis kurti gražias eBooks su AI pagalba.**
+
 ## Greitas Pradžia
 ### Aplinkos Kintamųjų Konfigūravimas
 ```

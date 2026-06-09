@@ -1,5 +1,7 @@
 # BookBook - Xerador de Libros Electrónicos con IA
 
+> **Un xerador de libros electrónicos con IA que che permite crear ebooks bonitos con asistencia de IA.**
+
 ## Inicio Rápido
 ### Configurar Variábeis de Contorno
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 O frontend executarase en http://localhost:5173
 
-## Scripts de Inicio Rápido (Windows)
 
-### Iniciar o Backend cun Solo Clic
-
-Crear `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Iniciar o Frontend cun Solo Clic
-
-Crear `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Iniciar Todos os Servizos cun Solo Clic
-
-Crear `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 

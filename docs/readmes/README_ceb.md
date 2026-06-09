@@ -1,5 +1,7 @@
 # BookBook - AI eBook Generator
 
+> **AI-powered eBook generator nga magahatag kanimo og paghimo og maanyag nga eBooks uban sa tabang sa AI.**
+
 ## Pagsugod nga Dali
 ### Pag-configure sa Mga Environment Variable
 ```
@@ -50,47 +52,8 @@ npm run dev
 ```
 Ang frontend molunggo sa http://localhost:5173
 
-## Quick Start Scripts (Windows)
 
-### Pag-sugod sa Backend gamit ang Usa ka Klik
-
-Himoa ang `start_backend.bat`:
-```batch
-@echo off
-cd backend
-uv run uvicorn main:app --reload --port 8000
-pause
-```
-
-### Pag-sugod sa Frontend gamit ang Usa ka Klik
-
-Himoa ang `start_frontend.bat`:
-```batch
-@echo off
-cd frontend
-npm run dev
-pause
-```
-
-### Pag-sugod sa Tanan nga Services gamit ang Usa ka Klik
-
-Himoa ang `start_all.bat`:
-```batch
-@echo off
-echo Starting backend...
-start "Backend" cmd /k "cd backend && uv run uvicorn main:app --reload --port 8000"
-
-timeout /t 3 /nobreak >nul
-
-echo Starting frontend...
-start "Frontend" cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Services started!
-echo Backend: http://localhost:8000
-echo Frontend: http://localhost:5173
-pause
-```
+---
 
 ---
 
