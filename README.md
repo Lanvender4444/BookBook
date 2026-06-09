@@ -88,7 +88,7 @@ BookBook 支持以下语言的界面显示：
 | español | es | español (Latinoamérica) | es-419 |
 | español (México) | es-MX | italiano | it |
 | português (Brasil) | pt-BR | português (Portugal) | pt-PT |
-| Русский | русский | українська | uk |
+| Русский | ru | українська | uk |
 | беларуская | be | български | bg |
 | čeština | cs | dansk | da |
 | eesti | et | ελληνικά | el |
