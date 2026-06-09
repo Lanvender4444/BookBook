@@ -81,7 +81,7 @@ BookBook 支持以下语言的界面显示：
 
 | 语言 | 代码 | 语言 | 代码 |
 |------|------|------|------|
-| 中文（简体） | zh-CN | 中文（繁體） | zh-TW |
+| 简体中文 | zh-CN | 中文（繁體） | zh-TW |
 | 日本語 | ja | 한국어 | ko |
 | English | en | Deutsch | de |
 | français | fr | français (Canada) | fr-CA |
