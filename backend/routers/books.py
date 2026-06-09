@@ -31,7 +31,8 @@ def get_book_detail(book_id: str, db: Session = Depends(get_db)):
         "created_at": book.created_at.isoformat() if book.created_at else None,
         "author_id": book.author_id,
         "source": book.source,
-        "peer_origin": book.peer_origin
+        "peer_origin": book.peer_origin,
+        "language": book.language
     }
 
 @router.get("/{book_id}/chapters")

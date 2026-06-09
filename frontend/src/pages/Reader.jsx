@@ -246,6 +246,13 @@ function Reader() {
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1 truncate">{book.description}</p>
+          {book.language && (
+            <div className="mt-2">
+              <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+                {book.language}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* 目录树 */}
