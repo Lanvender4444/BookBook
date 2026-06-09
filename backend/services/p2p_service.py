@@ -4,19 +4,39 @@ import secrets
 import time
 from datetime import datetime, timedelta
 from database import SessionLocal
-from config import P2P_PORT, P2P_MAGIC, P2P_APP_ID, P2P_VERSION
+from config import P2P_PORT, P2P_MAGIC, P2P_APP_ID, P2P_VERSION, get_local_ip, get_public_ip_via_stun
 from services.identity import generate_user_id
 from models import ShareToken
 
 
 class P2PService:
     PROTOCOL_VERSION = "1"
-    
+
     def __init__(self):
         self.user_id = generate_user_id()
         self.server = None
         self.running = False
         self._handshake_buffer = b""
+        self._local_ip = get_local_ip()
+        self._public_ip = None
+        self._public_ip_checked = False
+
+    def get_local_ip(self) -> str:
+        """获取当前本机 IP（每次调用刷新）"""
+        self._local_ip = get_local_ip()
+        return self._local_ip
+
+    def get_public_ip(self) -> str:
+        """获取公网 IP（带缓存）"""
+        if not self._public_ip_checked:
+            self._public_ip = get_public_ip_via_stun()
+            self._public_ip_checked = True
+        return self._public_ip
+
+    def get_best_host(self) -> str:
+        """获取最佳连接地址（优先公网 IP， fallback 局域网 IP）"""
+        public_ip = self.get_public_ip()
+        return public_ip if public_ip else self._local_ip
     
     async def start(self):
         self.running = True
@@ -155,19 +175,21 @@ class P2PService:
         db = SessionLocal()
         try:
             share = db.query(ShareToken).filter(ShareToken.token == token).first()
-            
+
             if not share:
                 writer.write(json.dumps({"status": "error", "message": "invalid token"}).encode())
                 await writer.drain()
                 return
-            
+
             if share.expires_at and share.expires_at < datetime.now():
                 writer.write(json.dumps({"status": "error", "message": "token expired"}).encode())
                 await writer.drain()
                 return
-            
+
+            from services.book_builder import get_book, get_book_chapters, get_all_books
+
+            # 如果指定了 book_id，返回单本书
             if share.book_id:
-                from services.book_builder import get_book, get_book_chapters
                 book = get_book(db, share.book_id)
                 if book:
                     chapters = get_book_chapters(db, share.book_id)
@@ -189,14 +211,33 @@ class P2PService:
                     share.used_count += 1
                     db.commit()
                     return
-            
-            writer.write(json.dumps({"status": "error", "message": "book not found"}).encode())
+
+            # 如果 book_id 为空，返回所有书籍列表
+            books = get_all_books(db)
+            books_data = []
+            for b in books:
+                chapters = []
+                if hasattr(b, 'chapters') and b.chapters:
+                    chapters = [{"index": c.index, "title": c.title} for c in b.chapters]
+                books_data.append({
+                    "id": b.id,
+                    "title": b.title,
+                    "description": b.description,
+                    "chapter_count": len(chapters),
+                    "author_id": b.author_id,
+                    "source": b.source,
+                    "language": b.language
+                })
+            writer.write(json.dumps({"status": "ok", "all_books": True, "books": books_data}, ensure_ascii=False).encode())
             await writer.drain()
+            share.used_count += 1
+            db.commit()
         finally:
             db.close()
     
     def create_share_token(self, book_id: str = None, expires_hours: int = 24) -> dict:
         token = secrets.token_urlsafe(32)
+        host = self.get_best_host()
         db = SessionLocal()
         try:
             share = ShareToken(
@@ -214,8 +255,11 @@ class P2PService:
             db.close()
         return {
             "token": token,
-            "share_url": f"bookbook://share?token={token}&peer={self.user_id}&v={P2P_VERSION}",
-            "expires_at": expires_at
+            "share_url": f"bookbook://share?token={token}&peer={self.user_id}&host={host}&port={P2P_PORT}&v={P2P_VERSION}",
+            "expires_at": expires_at,
+            "host": host,
+            "port": P2P_PORT,
+            "book_id": book_id
         }
     
     def get_share_info(self, token: str) -> dict:
@@ -232,8 +276,38 @@ class P2PService:
                 "peer_id": share.peer_id,
                 "created_at": share.created_at.isoformat(),
                 "expires_at": share.expires_at.isoformat() if share.expires_at else None,
-                "used_count": share.used_count
+                "used_count": share.used_count,
+                "host": self._local_ip,
+                "port": P2P_PORT
             }
+        finally:
+            db.close()
+
+    def get_all_shares(self, include_expired: bool = False) -> list:
+        """获取所有分享链接记录"""
+        db = SessionLocal()
+        try:
+            query = db.query(ShareToken)
+            if not include_expired:
+                query = query.filter(
+                    (ShareToken.expires_at == None) | (ShareToken.expires_at >= datetime.now())
+                )
+            shares = query.order_by(ShareToken.created_at.desc()).all()
+            result = []
+            host = self.get_best_host()
+            for share in shares:
+                result.append({
+                    "token": share.token,
+                    "book_id": share.book_id,
+                    "peer_id": share.peer_id,
+                    "created_at": share.created_at.isoformat(),
+                    "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+                    "used_count": share.used_count,
+                    "host": host,
+                    "port": P2P_PORT,
+                    "share_url": f"bookbook://share?token={share.token}&peer={share.peer_id}&host={host}&port={P2P_PORT}&v={P2P_VERSION}"
+                })
+            return result
         finally:
             db.close()
     

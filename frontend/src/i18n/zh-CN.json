@@ -132,7 +132,14 @@
     "redeemFailed": "接收失败",
     "shareCreated": "分享链接已创建",
     "shareHelpTitle": "如何使用分享链接",
-    "shareHelpDesc": "将生成的链接发送给对方，对方在「接收」标签页中粘贴即可获取你的书籍"
+    "shareHelpDesc": "将生成的链接发送给对方，对方在「接收」标签页中粘贴即可获取你的书籍",
+    "currentIp": "本机 IP",
+    "shareUrl": "分享链接",
+    "parseLink": "解析链接",
+    "autoFilled": "已自动填入",
+    "copySuccess": "复制成功",
+    "booksDownloaded": "已下载 {count} 本书",
+    "times": "次"
   },
   "reader": {
     "loading": "加载中...",

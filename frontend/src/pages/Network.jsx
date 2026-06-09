@@ -16,11 +16,26 @@ function Network() {
   const [downloadModal, setDownloadModal] = useState({ open: false, peerHost: '', bookId: '' })
   const [message, setMessage] = useState('')
   const [copiedToken, setCopiedToken] = useState('')
+  const [myInfo, setMyInfo] = useState({ user_id: '', host: '', port: 47833 })
+  const [loadingShares, setLoadingShares] = useState(false)
 
   useEffect(() => {
     fetchBooks()
+    fetchMyInfo()
     fetchShareTokens()
   }, [])
+
+  const fetchMyInfo = async () => {
+    try {
+      const response = await fetch('/api/peers/me')
+      if (response.ok) {
+        const data = await response.json()
+        setMyInfo(data)
+      }
+    } catch (error) {
+      console.error('Error fetching my info:', error)
+    }
+  }
 
   const fetchBooks = async () => {
     try {
@@ -33,11 +48,17 @@ function Network() {
   }
 
   const fetchShareTokens = async () => {
+    setLoadingShares(true)
     try {
-      const tokens = shareTokens
-      setShareTokens(tokens)
+      const response = await fetch('/api/peers/shares')
+      if (response.ok) {
+        const data = await response.json()
+        setShareTokens(data.shares || [])
+      }
     } catch (error) {
       console.error('Error fetching tokens:', error)
+    } finally {
+      setLoadingShares(false)
     }
   }
 
@@ -120,6 +141,36 @@ function Network() {
     setDownloadModal({ open: false, peerHost: '', bookId: '' })
   }
 
+  // 解析分享链接，自动填充 host/port/token
+  const parseShareLink = (link) => {
+    try {
+      if (link.startsWith('bookbook://')) {
+        const url = new URL(link.replace('bookbook://', 'http://'))
+        const token = url.searchParams.get('token')
+        const host = url.searchParams.get('host')
+        const port = url.searchParams.get('port')
+        if (token) {
+          setRedeemForm(prev => ({
+            ...prev,
+            token,
+            host: host || prev.host,
+            port: port ? parseInt(port) : prev.port
+          }))
+          setMessage(t('network.autoFilled'))
+          return true
+        }
+      }
+      // 如果不是 bookbook:// 格式，尝试直接作为 token
+      if (link.length > 10 && !link.includes(' ')) {
+        setRedeemForm(prev => ({ ...prev, token: link }))
+        return true
+      }
+    } catch (e) {
+      // ignore parse errors
+    }
+    return false
+  }
+
   const handleRedeem = async () => {
     if (!redeemForm.token || !redeemForm.host) return
     setRedeeming(true)
@@ -136,7 +187,11 @@ function Network() {
       })
       if (response.ok) {
         const data = await response.json()
-        setMessage(t('network.downloadSuccess'))
+        if (data.saved_ids && data.saved_ids.length > 1) {
+          setMessage(t('network.booksDownloaded', { count: data.saved_ids.length }))
+        } else {
+          setMessage(t('network.downloadSuccess'))
+        }
         fetchBooks()
       } else {
         const error = await response.json()
@@ -151,6 +206,44 @@ function Network() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">{t('network.title')}</h1>
+
+      {/* My Info Card */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">{t('network.userId')}:</span>
+            <span className="font-mono bg-gray-100 px-2 py-1 rounded">{myInfo.user_id}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">{t('network.currentIp')}:</span>
+            <span className="font-mono bg-gray-100 px-2 py-1 rounded text-indigo-600">{myInfo.host}:{myInfo.port}</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(`${myInfo.host}:${myInfo.port}`)
+                setCopiedToken('ip')
+                setTimeout(() => setCopiedToken(''), 2000)
+              }}
+              className="text-xs px-2 py-1 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100"
+            >
+              {copiedToken === 'ip' ? '✓' : t('network.copy')}
+            </button>
+          </div>
+          {myInfo.public_ip && (
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500">公网 IP:</span>
+              <span className="font-mono bg-green-100 px-2 py-1 rounded text-green-700">{myInfo.public_ip}:{myInfo.port}</span>
+              <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">NAT 可穿透</span>
+            </div>
+          )}
+          {!myInfo.public_ip && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                当前处于局域网内，公网访问需要对方在同一网络或配置端口转发
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Tab navigation */}
       <div className="flex space-x-2 mb-6">
@@ -175,7 +268,11 @@ function Network() {
 
       {message && (
         <div className={`mb-4 p-3 rounded-lg text-sm ${
-          message.includes(t('network.downloadSuccess')) || message.includes(t('network.connected')) || message.includes(t('network.shareCreated'))
+          message.includes(t('network.downloadSuccess')) ||
+          message.includes(t('network.connected')) ||
+          message.includes(t('network.shareCreated')) ||
+          message.includes(t('network.autoFilled')) ||
+          message.includes(t('network.booksDownloaded'))
             ? 'bg-green-50 text-green-700 border border-green-200'
             : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
@@ -188,7 +285,7 @@ function Network() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">{t('network.createShare')}</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('network.selectBook')}</label>
@@ -230,32 +327,46 @@ function Network() {
 
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">{t('network.myShareLinks')}</h2>
-            {shareTokens.length === 0 ? (
+            {loadingShares ? (
+              <p className="text-gray-500 text-center py-8">{t('network.downloading')}</p>
+            ) : shareTokens.length === 0 ? (
               <p className="text-gray-500 text-center py-8">{t('network.noShareLinks')}</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-96 overflow-y-auto">
                 {shareTokens.map((token, idx) => (
                   <div key={idx} className="border border-gray-200 rounded-lg p-3">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-gray-500">
-                        {token.book_id 
+                        {token.book_id
                           ? books.find(b => b.id === token.book_id)?.title || token.book_id
                           : t('network.allBooks')
                         }
                       </span>
-                      <button
-                        onClick={() => handleCopyShareUrl(token.share_url)}
-                        className="px-3 py-1 text-sm bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100"
-                      >
-                        {copiedToken === token.share_url ? '✓' : t('network.copy')}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleCopyShareUrl(token.share_url)}
+                          className="px-3 py-1 text-sm bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100"
+                        >
+                          {copiedToken === token.share_url ? '✓' : t('network.copy')}
+                        </button>
+                      </div>
                     </div>
-                    <div className="bg-gray-50 rounded p-2 text-xs font-mono break-all text-gray-600">
+                    <div className="bg-gray-50 rounded p-2 text-xs font-mono break-all text-gray-600 mb-1">
                       {token.share_url}
                     </div>
+                    {token.host && (
+                      <div className="text-xs text-gray-400 mb-1">
+                        {t('network.currentIp')}: {token.host}:{token.port}
+                      </div>
+                    )}
                     {token.expires_at && (
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-gray-400">
                         {t('network.expiresAt')}: {new Date(token.expires_at).toLocaleString()}
+                      </p>
+                    )}
+                    {token.used_count > 0 && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {t('network.download')}: {token.used_count} {t('network.times')}
                       </p>
                     )}
                   </div>
@@ -271,7 +382,7 @@ function Network() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">{t('network.connectPeer')}</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -313,7 +424,7 @@ function Network() {
                 {t('network.shareHelpDesc')}
               </p>
               <div className="bg-white rounded p-3 text-xs font-mono text-gray-500 border border-gray-200">
-                bookbook://share?token=xxx&peer=xxx&v=1
+                bookbook://share?token=xxx&peer=xxx&host=xxx&port=xxx&v=1
               </div>
             </div>
           </div>
@@ -364,15 +475,26 @@ function Network() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('network.shareToken')}
+                  {t('network.shareUrl')}
                 </label>
-                <input
-                  type="text"
-                  value={redeemForm.token}
-                  onChange={(e) => setRedeemForm({...redeemForm, token: e.target.value})}
-                  placeholder="bookbook://share?token=xxx&peer=xxx&v=1"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={redeemForm.token}
+                    onChange={(e) => setRedeemForm({...redeemForm, token: e.target.value})}
+                    placeholder="bookbook://share?token=xxx&peer=xxx&host=xxx&port=xxx&v=1"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => parseShareLink(redeemForm.token)}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm whitespace-nowrap"
+                  >
+                    {t('network.parseLink')}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {t('network.shareToken')} / {t('network.shareUrl')}
+                </p>
               </div>
 
               <div>

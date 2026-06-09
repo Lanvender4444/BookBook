@@ -28,6 +28,29 @@ class RedeemRequest(BaseModel):
 def list_peers():
     return []
 
+@router.get("/info")
+def get_node_info():
+    """获取当前 P2P 节点信息（IP、User ID 等）"""
+    return {
+        "user_id": p2p_service.user_id,
+        "host": p2p_service.get_local_ip(),
+        "port": p2p_service.__class__.__name__  # fallback, actual port from config
+    }
+
+# 更准确的 info endpoint
+@router.get("/me")
+def get_my_info():
+    from config import P2P_PORT
+    local_ip = p2p_service.get_local_ip()
+    public_ip = p2p_service.get_public_ip()
+    return {
+        "user_id": p2p_service.user_id,
+        "host": local_ip,
+        "port": P2P_PORT,
+        "public_ip": public_ip,
+        "nat_type": "public" if public_ip else "local"
+    }
+
 @router.post("/connect")
 async def connect_to_peer(req: ConnectRequest):
     result = await p2p_service.connect_to_peer(req.host, req.port)
@@ -61,6 +84,12 @@ async def download_book_from_peer(peer_host: str, book_id: str, port: int = 4783
     finally:
         db.close()
 
+@router.get("/shares")
+def list_share_tokens():
+    """列出所有有效的分享链接"""
+    shares = p2p_service.get_all_shares(include_expired=False)
+    return {"shares": shares}
+
 @router.post("/share")
 def create_share_token(req: ShareRequest):
     result = p2p_service.create_share_token(book_id=req.book_id, expires_hours=req.expires_hours)
@@ -71,7 +100,7 @@ def get_share_info(token: str):
     info = p2p_service.get_share_info(token)
     if not info:
         raise HTTPException(status_code=404, detail="Share token not found or expired")
-    
+
     book_info = None
     if info["book_id"]:
         db = SessionLocal()
@@ -85,14 +114,16 @@ def get_share_info(token: str):
                 }
         finally:
             db.close()
-    
+
     return {
         "token": info["token"],
         "book_id": info["book_id"],
         "book": book_info,
         "peer_id": info["peer_id"],
         "created_at": info["created_at"],
-        "expires_at": info["expires_at"]
+        "expires_at": info["expires_at"],
+        "host": info["host"],
+        "port": info["port"]
     }
 
 @router.post("/redeem")
@@ -100,19 +131,52 @@ async def redeem_share_token(req: RedeemRequest):
     share_info = p2p_service.get_share_info(req.token)
     if not share_info:
         raise HTTPException(status_code=404, detail="Share token not found or expired")
-    
-    book_data = await p2p_service.fetch_by_share_token(req.host, req.token, req.port)
-    if not book_data:
+
+    result = await p2p_service.fetch_by_share_token(req.host, req.token, req.port)
+    if not result:
         raise HTTPException(status_code=404, detail="Failed to fetch book from peer")
-    
+
     db = SessionLocal()
     try:
-        existing = db.query(Book).filter(Book.id == book_data["id"]).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Book already exists")
-        
-        saved_id = save_p2p_book(db, book_data, book_data.get("author_id", "p2p"))
-        return {"message": "Book downloaded successfully", "book_id": saved_id}
+        saved_ids = []
+
+        # 处理单本书
+        if "book" in result:
+            book_data = result["book"]
+            existing = db.query(Book).filter(Book.id == book_data["id"]).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Book already exists")
+            saved_id = save_p2p_book(db, book_data, book_data.get("author_id", "p2p"))
+            saved_ids.append(saved_id)
+            return {"message": "Book downloaded successfully", "book_id": saved_id, "saved_ids": saved_ids}
+
+        # 处理多本书（all_books 模式）
+        if result.get("all_books") and "books" in result:
+            books_meta = result["books"]
+            failed = []
+            for meta in books_meta:
+                try:
+                    existing = db.query(Book).filter(Book.id == meta["id"]).first()
+                    if existing:
+                        continue
+                    # 获取每本书的完整内容
+                    book_data = await p2p_service.fetch_book(req.host, meta["id"], req.port)
+                    if book_data:
+                        saved_id = save_p2p_book(db, book_data, book_data.get("author_id", "p2p"))
+                        saved_ids.append(saved_id)
+                except Exception as e:
+                    failed.append({"id": meta.get("id"), "error": str(e)})
+
+            if not saved_ids:
+                raise HTTPException(status_code=404, detail="No books could be downloaded")
+
+            return {
+                "message": f"Downloaded {len(saved_ids)} books successfully",
+                "saved_ids": saved_ids,
+                "failed": failed
+            }
+
+        raise HTTPException(status_code=404, detail="Invalid response from peer")
     except HTTPException:
         raise
     except Exception as e:
