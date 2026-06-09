@@ -11,7 +11,7 @@ function Network() {
   const [connectForm, setConnectForm] = useState({ host: '', port: 47833 })
   const [peerBooks, setPeerBooks] = useState([])
   const [connecting, setConnecting] = useState(false)
-  const [redeemForm, setRedeemForm] = useState({ token: '', host: '', port: 47833 })
+  const [redeemForm, setRedeemForm] = useState({ token: '', host: '', local_host: '', port: 47833 })
   const [redeeming, setRedeeming] = useState(false)
   const [downloadModal, setDownloadModal] = useState({ open: false, peerHost: '', bookId: '' })
   const [message, setMessage] = useState('')
@@ -93,11 +93,21 @@ function Network() {
   }
 
   const handleConnect = async () => {
-    if (!connectForm.host) return
+    let host = connectForm.host.trim()
+    let port = connectForm.port
+    // 如果用户输入了 host:port 格式，自动拆分
+    if (host.includes(':')) {
+      const parts = host.split(':')
+      if (parts.length === 2 && !isNaN(parseInt(parts[1]))) {
+        host = parts[0]
+        port = parseInt(parts[1])
+      }
+    }
+    if (!host) return
     setConnecting(true)
     setMessage('')
     try {
-      const response = await fetch(`/api/peers/${connectForm.host}/books?port=${connectForm.port}`, {
+      const response = await fetch(`/api/peers/${host}/books?port=${port}`, {
         method: 'POST'
       })
       if (response.ok) {
@@ -121,9 +131,18 @@ function Network() {
   }
 
   const confirmDownload = async () => {
-    const { peerHost, bookId } = downloadModal
+    let { peerHost, bookId } = downloadModal
+    let port = connectForm.port
+    // 自动拆分 host:port
+    if (peerHost && peerHost.includes(':')) {
+      const parts = peerHost.split(':')
+      if (parts.length === 2 && !isNaN(parseInt(parts[1]))) {
+        peerHost = parts[0]
+        port = parseInt(parts[1])
+      }
+    }
     try {
-      const response = await fetch(`/api/peers/${peerHost}/books/${bookId}/download?port=${connectForm.port}`, {
+      const response = await fetch(`/api/peers/${peerHost}/books/${bookId}/download?port=${port}`, {
         method: 'POST'
       })
       if (response.ok) {
@@ -136,9 +155,11 @@ function Network() {
         setMessage(error.detail || t('network.downloadFailed'))
       }
     } catch (error) {
-      setMessage(t('network.downloadFailed'))
+      setMessage(t('network.downloadFailed') + ': ' + (error.message || ''))
     }
     setDownloadModal({ open: false, peerHost: '', bookId: '' })
+    // 自动滚动到顶部，让用户看到提示消息
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   // 解析分享链接，自动填充 host/port/token
@@ -148,12 +169,14 @@ function Network() {
         const url = new URL(link.replace('bookbook://', 'http://'))
         const token = url.searchParams.get('token')
         const host = url.searchParams.get('host')
+        const public_host = url.searchParams.get('public_host')
         const port = url.searchParams.get('port')
         if (token) {
           setRedeemForm(prev => ({
             ...prev,
             token,
-            host: host || prev.host,
+            host: public_host || host || prev.host,
+            local_host: host || prev.host,
             port: port ? parseInt(port) : prev.port
           }))
           setMessage(t('network.autoFilled'))
@@ -172,7 +195,30 @@ function Network() {
   }
 
   const handleRedeem = async () => {
-    if (!redeemForm.token || !redeemForm.host) return
+    let token = redeemForm.token.trim()
+    let host = redeemForm.host.trim()
+    let local_host = redeemForm.local_host.trim()
+    let port = redeemForm.port
+
+    // 自动尝试从 URL 中提取 token / host / port
+    if (token.startsWith('bookbook://')) {
+      try {
+        const url = new URL(token.replace('bookbook://', 'http://'))
+        const extractedToken = url.searchParams.get('token')
+        if (extractedToken) {
+          token = extractedToken
+          const urlHost = url.searchParams.get('public_host') || url.searchParams.get('host')
+          const urlPort = url.searchParams.get('port')
+          if (urlHost && !host) host = urlHost
+          if (urlHost && !local_host) local_host = url.searchParams.get('host') || urlHost
+          if (urlPort) port = parseInt(urlPort)
+        }
+      } catch (e) {
+        // 解析失败继续用原值
+      }
+    }
+
+    if (!token || !host) return
     setRedeeming(true)
     setMessage('')
     try {
@@ -180,9 +226,10 @@ function Network() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: redeemForm.token,
-          host: redeemForm.host,
-          port: redeemForm.port
+          token,
+          host,
+          local_host,
+          port
         })
       })
       if (response.ok) {
@@ -357,6 +404,7 @@ function Network() {
                     {token.host && (
                       <div className="text-xs text-gray-400 mb-1">
                         {t('network.currentIp')}: {token.host}:{token.port}
+                        {token.public_host && ` (公网: ${token.public_host}:${token.port})`}
                       </div>
                     )}
                     {token.expires_at && (

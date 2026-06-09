@@ -57,25 +57,29 @@ class P2PService:
     
     async def _handle_connection(self, reader, writer):
         addr = writer.get_extra_info('peername')
+        print(f"[P2P] Connection from {addr}")
         try:
             handshake_data = await asyncio.wait_for(reader.read(4096), timeout=10)
             handshake = json.loads(handshake_data.decode())
-            
+
             if handshake.get("magic") != P2P_MAGIC:
+                print("[P2P] Invalid magic, closing")
                 writer.write(json.dumps({"status": "error", "message": "invalid magic"}).encode())
                 await writer.drain()
                 writer.close()
                 return
-            
+
             if handshake.get("app_id") != P2P_APP_ID:
+                print("[P2P] Invalid app_id, closing")
                 writer.write(json.dumps({"status": "error", "message": "invalid app_id"}).encode())
                 await writer.drain()
                 writer.close()
                 return
-            
+
             peer_id = handshake.get("peer_id", "")
             version = handshake.get("version", "0")
-            
+            print(f"[P2P] Handshake OK from peer_id={peer_id} version={version}")
+
             response = {
                 "magic": P2P_MAGIC,
                 "app_id": P2P_APP_ID,
@@ -85,12 +89,13 @@ class P2PService:
             }
             writer.write(json.dumps(response).encode())
             await writer.drain()
-            
+
             request_data = await asyncio.wait_for(reader.read(65536), timeout=30)
             request = json.loads(request_data.decode())
-            
+
             action = request.get("action")
-            
+            print(f"[P2P] Action: {action}")
+
             if action == "list_books":
                 await self._handle_list_books(writer)
             elif action == "get_book":
@@ -100,20 +105,22 @@ class P2PService:
             else:
                 writer.write(json.dumps({"status": "error", "message": "unknown action"}).encode())
                 await writer.drain()
-                
+
         except asyncio.TimeoutError:
+            print("[P2P] Timeout")
             try:
                 writer.write(json.dumps({"status": "error", "message": "timeout"}).encode())
                 await writer.drain()
             except:
                 pass
         except Exception as e:
-            pass
+            print(f"[P2P] Error: {e}")
         finally:
             try:
                 writer.close()
             except:
                 pass
+            print(f"[P2P] Connection closed {addr}")
     
     async def _handle_list_books(self, writer):
         from services.book_builder import get_all_books
@@ -237,7 +244,8 @@ class P2PService:
     
     def create_share_token(self, book_id: str = None, expires_hours: int = 24) -> dict:
         token = secrets.token_urlsafe(32)
-        host = self.get_best_host()
+        local_host = self._local_ip
+        public_host = self.get_public_ip() or ""
         db = SessionLocal()
         try:
             share = ShareToken(
@@ -255,14 +263,16 @@ class P2PService:
             db.close()
         return {
             "token": token,
-            "share_url": f"bookbook://share?token={token}&peer={self.user_id}&host={host}&port={P2P_PORT}&v={P2P_VERSION}",
+            "share_url": f"bookbook://share?token={token}&peer={self.user_id}&host={local_host}&public_host={public_host}&port={P2P_PORT}&v={P2P_VERSION}",
             "expires_at": expires_at,
-            "host": host,
+            "host": local_host,
+            "public_host": public_host,
             "port": P2P_PORT,
             "book_id": book_id
         }
     
     def get_share_info(self, token: str) -> dict:
+        token = token.strip()
         db = SessionLocal()
         try:
             share = db.query(ShareToken).filter(ShareToken.token == token).first()
@@ -278,6 +288,7 @@ class P2PService:
                 "expires_at": share.expires_at.isoformat() if share.expires_at else None,
                 "used_count": share.used_count,
                 "host": self._local_ip,
+                "public_host": self.get_public_ip() or "",
                 "port": P2P_PORT
             }
         finally:
@@ -294,7 +305,8 @@ class P2PService:
                 )
             shares = query.order_by(ShareToken.created_at.desc()).all()
             result = []
-            host = self.get_best_host()
+            local_host = self._local_ip
+            public_host = self.get_public_ip() or ""
             for share in shares:
                 result.append({
                     "token": share.token,
@@ -303,17 +315,24 @@ class P2PService:
                     "created_at": share.created_at.isoformat(),
                     "expires_at": share.expires_at.isoformat() if share.expires_at else None,
                     "used_count": share.used_count,
-                    "host": host,
+                    "host": local_host,
+                    "public_host": public_host,
                     "port": P2P_PORT,
-                    "share_url": f"bookbook://share?token={share.token}&peer={share.peer_id}&host={host}&port={P2P_PORT}&v={P2P_VERSION}"
+                    "share_url": f"bookbook://share?token={share.token}&peer={share.peer_id}&host={local_host}&public_host={public_host}&port={P2P_PORT}&v={P2P_VERSION}"
                 })
             return result
         finally:
             db.close()
     
     async def connect_to_peer(self, host: str, port: int) -> dict:
+        # 自动拆分 host:port 格式
+        if host and ':' in host:
+            parts = host.rsplit(':', 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                host = parts[0]
+                port = int(parts[1])
         reader, writer = await asyncio.open_connection(host, port)
-        
+
         try:
             handshake = {
                 "magic": P2P_MAGIC,
@@ -339,10 +358,16 @@ class P2PService:
     async def fetch_book_list(self, host: str, port: int = None) -> list:
         if port is None:
             port = P2P_PORT
-        
+        # 自动拆分 host:port 格式
+        if host and ':' in host:
+            parts = host.rsplit(':', 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                host = parts[0]
+                port = int(parts[1])
+
         try:
             reader, writer = await asyncio.open_connection(host, port)
-            
+
             handshake = {
                 "magic": P2P_MAGIC,
                 "app_id": P2P_APP_ID,
@@ -352,34 +377,47 @@ class P2PService:
             }
             writer.write(json.dumps(handshake).encode())
             await writer.drain()
-            
+
             response_data = await asyncio.wait_for(reader.read(4096), timeout=10)
             response = json.loads(response_data.decode())
-            
+
             if response.get("status") != "ok":
                 writer.close()
-                return []
-            
+                return None
+
             request = {"action": "list_books"}
             writer.write(json.dumps(request).encode())
             await writer.drain()
-            
-            books_data = await asyncio.wait_for(reader.read(65536), timeout=30)
+
+            # 循环读取所有数据，支持大数据传输
+            chunks = []
+            while True:
+                chunk = await asyncio.wait_for(reader.read(65536), timeout=30)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            books_data = b"".join(chunks)
             result = json.loads(books_data.decode())
             writer.close()
-            
+
             return result.get("books", [])
-            
+
         except Exception as e:
-            return []
+            return None
     
     async def fetch_book(self, host: str, book_id: str, port: int = None) -> dict:
         if port is None:
             port = P2P_PORT
-        
+        # 自动拆分 host:port 格式
+        if host and ':' in host:
+            parts = host.rsplit(':', 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                host = parts[0]
+                port = int(parts[1])
+
         try:
             reader, writer = await asyncio.open_connection(host, port)
-            
+
             handshake = {
                 "magic": P2P_MAGIC,
                 "app_id": P2P_APP_ID,
@@ -389,36 +427,49 @@ class P2PService:
             }
             writer.write(json.dumps(handshake).encode())
             await writer.drain()
-            
+
             response_data = await asyncio.wait_for(reader.read(4096), timeout=10)
             response = json.loads(response_data.decode())
-            
+
             if response.get("status") != "ok":
                 writer.close()
                 return None
-            
+
             request = {"action": "get_book", "book_id": book_id}
             writer.write(json.dumps(request).encode())
             await writer.drain()
-            
-            book_data = await asyncio.wait_for(reader.read(131072), timeout=60)
+
+            # 循环读取所有数据，支持大数据传输
+            chunks = []
+            while True:
+                chunk = await asyncio.wait_for(reader.read(65536), timeout=60)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            book_data = b"".join(chunks)
             result = json.loads(book_data.decode())
             writer.close()
-            
+
             if result.get("status") == "ok":
                 return result.get("book")
             return None
-            
+
         except Exception as e:
             return None
     
     async def fetch_by_share_token(self, host: str, token: str, port: int = None) -> dict:
         if port is None:
             port = P2P_PORT
-        
+        # 自动拆分 host:port 格式
+        if host and ':' in host:
+            parts = host.rsplit(':', 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                host = parts[0]
+                port = int(parts[1])
+
         try:
             reader, writer = await asyncio.open_connection(host, port)
-            
+
             handshake = {
                 "magic": P2P_MAGIC,
                 "app_id": P2P_APP_ID,
@@ -428,26 +479,33 @@ class P2PService:
             }
             writer.write(json.dumps(handshake).encode())
             await writer.drain()
-            
+
             response_data = await asyncio.wait_for(reader.read(4096), timeout=10)
             response = json.loads(response_data.decode())
-            
+
             if response.get("status") != "ok":
                 writer.close()
                 return None
-            
+
             request = {"action": "verify_share", "token": token}
             writer.write(json.dumps(request).encode())
             await writer.drain()
-            
-            result_data = await asyncio.wait_for(reader.read(131072), timeout=60)
+
+            # 循环读取所有数据，支持大数据传输
+            chunks = []
+            while True:
+                chunk = await asyncio.wait_for(reader.read(65536), timeout=60)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            result_data = b"".join(chunks)
             result = json.loads(result_data.decode())
             writer.close()
-            
+
             if result.get("status") == "ok":
-                return result.get("book")
+                return result
             return None
-            
+
         except Exception as e:
             return None
     
