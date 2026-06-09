@@ -1,6 +1,0 @@
-{
-  "title": "fix(i18n): translate Chinese placeholders to native languages",
-  "body": "## Summary\n\nTranslate 61 i18n files that were verbatim copies of zh-CN.json to their correct target languages.\n\n- Each file was individually translated to ensure accurate native-language translations\n- Covers all UI sections: nav, generate, history, library, network, reader, and modal\n- Languages translated: Amharic, Bengali, Persian, Georgian, Kannada, Konkani, Latin, Maithili, Malayalam, Marathi, Malay, Burmese, Nepali, Odia, Punjabi, Pashto, Sindhi, Sinhala, Swahili, Tamil, Telugu, Urdu, Vietnamese\n- Also fixed vi.json which had partial Chinese text in the network section",
-  "base": "main",
-  "head": "i18n"
-}
