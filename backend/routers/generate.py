@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 executor = ThreadPoolExecutor(max_workers=2)
 
-def run_generation_task(history_id: int, prompt: str, requirements: dict, user_id: str):
+def run_generation_task(history_id: int, prompt: str, requirements: dict, user_id: str, language: str = "zh-CN"):
     """在后台线程中运行生成任务"""
     from services.llm_service import generate_outline_sync, generate_chapter_sync
     from services.book_builder import save_book_sync
@@ -120,7 +120,7 @@ def run_generation_task(history_id: int, prompt: str, requirements: dict, user_i
             }
         
         # 保存书籍
-        book_id = save_book_sync(db, outline, chapters, user_id)
+        book_id = save_book_sync(db, outline, chapters, user_id, language)
         
         # 更新历史记录状态
         db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update({
@@ -162,12 +162,16 @@ def run_generation_task(history_id: int, prompt: str, requirements: dict, user_i
 async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db)):
     user_id = generate_user_id()
     
+    # 从 requirements 中提取语言信息
+    language = request.requirements.get("language", "zh-CN")
+    
     # 创建历史记录
     history = GenerationHistory(
         prompt=request.prompt,
         requirements=request.requirements,
         status="pending",
-        author_id=user_id
+        author_id=user_id,
+        language=language
     )
     db.add(history)
     db.commit()
@@ -190,7 +194,8 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         history_id, 
         request.prompt, 
         request.requirements,
-        user_id
+        user_id,
+        language
     )
     
     async def event_generator():
@@ -364,6 +369,7 @@ def get_history_detail(history_id: int, db: Session = Depends(get_db)):
         "completed_at": history.completed_at,
         "author_id": history.author_id,
         "book_id": history.book_id,
+        "language": history.language,
         "task_status": task_status.get(history_id)
     }
     return result

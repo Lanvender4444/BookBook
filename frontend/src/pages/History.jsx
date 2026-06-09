@@ -259,6 +259,12 @@ function History() {
                           </div>
                         </>
                       )}
+                      {history.language && (
+                        <div>
+                          <span className="text-gray-500">{t('generate.language')}</span>
+                          <p className="text-gray-800">{history.language}</p>
+                        </div>
+                      )}
                     </div>
 
                     {history.outline && (

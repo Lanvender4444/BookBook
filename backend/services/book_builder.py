@@ -20,9 +20,9 @@ def get_book_filepath(book_id: str, title: str) -> Path:
     filename = f"{book_id}_{safe_title}.md"
     return Path(BOOKS_DIR) / filename
 
-def save_book(db: Session, outline: dict, chapters: list, user_id: str) -> str:
+def save_book(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN") -> str:
     """保存书籍到本地文件和数据库"""
-    book_id = str(uuid.uuid4())[:8]  # 短 ID
+    book_id = str(uuid.uuid4())  # 完整 UUID
     
     # 生成 Markdown 内容
     md_content = f"# {outline['title']}\n\n"
@@ -44,16 +44,17 @@ def save_book(db: Session, outline: dict, chapters: list, user_id: str) -> str:
         outline=outline,
         file_path=str(filepath),
         author_id=user_id,
-        source="local"
+        source="local",
+        language=language
     )
     db.add(book)
     db.commit()
     
     return book_id
 
-def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str) -> str:
+def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN") -> str:
     """同步版本的书籍保存，用于后台线程"""
-    book_id = str(uuid.uuid4())[:8]  # 短 ID
+    book_id = str(uuid.uuid4())  # 完整 UUID
     
     # 生成 Markdown 内容
     md_content = f"# {outline['title']}\n\n"
@@ -75,7 +76,8 @@ def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str) -> 
         outline=outline,
         file_path=str(filepath),
         author_id=user_id,
-        source="local"
+        source="local",
+        language=language
     )
     db.add(book)
     db.commit()
@@ -106,7 +108,8 @@ def save_p2p_book(db: Session, book_data: dict, peer_id: str) -> str:
         outline=book_data.get('outline', {}),
         file_path=str(filepath),
         source="p2p",
-        peer_origin=peer_id
+        peer_origin=peer_id,
+        language=book_data.get('language')
     )
     db.add(book)
     db.commit()
