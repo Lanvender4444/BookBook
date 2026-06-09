@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from database import SessionLocal
 from services.p2p_service import P2PService
-from services.book_builder import save_book as save_p2p_book, get_book
+from services.book_builder import save_p2p_book, get_book
 from models import Book
 from pydantic import BaseModel
 
