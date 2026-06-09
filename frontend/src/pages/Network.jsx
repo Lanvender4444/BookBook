@@ -174,7 +174,30 @@ function Network() {
   }
 
   const handleRedeem = async () => {
-    if (!redeemForm.token || !redeemForm.host) return
+    let token = redeemForm.token.trim()
+    let host = redeemForm.host.trim()
+    let local_host = redeemForm.local_host.trim()
+    let port = redeemForm.port
+
+    // 自动尝试从 URL 中提取 token / host / port
+    if (token.startsWith('bookbook://')) {
+      try {
+        const url = new URL(token.replace('bookbook://', 'http://'))
+        const extractedToken = url.searchParams.get('token')
+        if (extractedToken) {
+          token = extractedToken
+          const urlHost = url.searchParams.get('public_host') || url.searchParams.get('host')
+          const urlPort = url.searchParams.get('port')
+          if (urlHost && !host) host = urlHost
+          if (urlHost && !local_host) local_host = url.searchParams.get('host') || urlHost
+          if (urlPort) port = parseInt(urlPort)
+        }
+      } catch (e) {
+        // 解析失败继续用原值
+      }
+    }
+
+    if (!token || !host) return
     setRedeeming(true)
     setMessage('')
     try {
@@ -182,10 +205,10 @@ function Network() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: redeemForm.token,
-          host: redeemForm.host,
-          local_host: redeemForm.local_host,
-          port: redeemForm.port
+          token,
+          host,
+          local_host,
+          port
         })
       })
       if (response.ok) {

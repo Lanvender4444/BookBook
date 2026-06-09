@@ -265,6 +265,7 @@ class P2PService:
         }
     
     def get_share_info(self, token: str) -> dict:
+        token = token.strip()
         db = SessionLocal()
         try:
             share = db.query(ShareToken).filter(ShareToken.token == token).first()
