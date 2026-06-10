@@ -124,7 +124,7 @@ PROVIDERS = {
         "env_key": "GEMINI_API_KEY",
     },
     "zhipu": {
-        "name": "智谱 AI (GLM)",
+        "name": "Zhipu",
         "api_type": "openai_compatible",
         "default_base_url": "https://open.bigmodel.cn/api/paas/v4",
         "default_models": [
@@ -137,7 +137,7 @@ PROVIDERS = {
         "env_key": "ZHIPU_API_KEY",
     },
     "qwen": {
-        "name": "通义千问 (Qwen)",
+        "name": "Qwen CN",
         "api_type": "openai_compatible",
         "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "default_models": [
@@ -150,7 +150,7 @@ PROVIDERS = {
         "env_key": "QWEN_API_KEY",
     },
     "qwen_intl": {
-        "name": "通义千问 (国际)",
+        "name": "Qwen International",
         "api_type": "openai_compatible",
         "default_base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         "default_models": [
@@ -163,7 +163,7 @@ PROVIDERS = {
         "env_key": "QWEN_INTL_API_KEY",
     },
     "kimi": {
-        "name": "Moonshot (Kimi)",
+        "name": "Moonshot CN",
         "api_type": "openai_compatible",
         "default_base_url": "https://api.moonshot.cn/v1",
         "default_models": [
@@ -175,7 +175,7 @@ PROVIDERS = {
         "env_key": "KIMI_API_KEY",
     },
     "moonshot": {
-        "name": "Moonshot (国际)",
+        "name": "Moonshot International",
         "api_type": "openai_compatible",
         "default_base_url": "https://api.moonshot.ai/v1",
         "default_models": [
@@ -370,7 +370,7 @@ PROVIDERS = {
         "website": "https://cloud.sambanova.ai/",
     },
     "siliconflow": {
-        "name": "SiliconFlow (硅基流动)",
+        "name": "SiliconFlow CN",
         "api_type": "openai_compatible",
         "default_base_url": "https://api.siliconflow.cn/v1",
         "default_models": [
@@ -381,7 +381,7 @@ PROVIDERS = {
         "website": "https://cloud.siliconflow.cn/",
     },
     "siliconflow_intl": {
-        "name": "SiliconFlow (国际)",
+        "name": "SiliconFlow International",
         "api_type": "openai_compatible",
         "default_base_url": "https://api.siliconflow.com/v1",
         "default_models": [
@@ -393,7 +393,7 @@ PROVIDERS = {
         "env_key": "SILICONFLOW_INTL_API_KEY",
     },
     "baichuan": {
-        "name": "百川 (Baichuan)",
+        "name": "Baichuan",
         "api_type": "openai_compatible",
         "default_base_url": "https://api.baichuan-api.com/v1",
         "default_models": [
@@ -403,7 +403,7 @@ PROVIDERS = {
         "website": "https://platform.baichuan-ai.com/",
     },
     "volcengine": {
-        "name": "火山引擎 (Doubao)",
+        "name": "Volcengine",
         "api_type": "openai_compatible",
         "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
         "default_models": [
@@ -413,7 +413,7 @@ PROVIDERS = {
         "website": "https://console.volcengine.com/ark",
     },
     "yi": {
-        "name": "零一万物 (01.AI)",
+        "name": "Yi",
         "api_type": "openai_compatible",
         "default_base_url": "https://api.lingyiwanwu.com/v1",
         "default_models": [
