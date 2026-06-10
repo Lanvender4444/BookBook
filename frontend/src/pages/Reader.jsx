@@ -41,9 +41,22 @@ function Reader() {
   const [content, setContent] = useState('')
   const [activeId, setActiveId] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [openMenuOpen, setOpenMenuOpen] = useState(false)
+  const [toast, setToast] = useState({ show: false, message: '', type: 'error' })
 
   // ✅ Fix 2: ticking 用 ref 存，避免 observer 重建时状态丢失
   const tickingRef = useRef(false)
+  const toastTimer = useRef(null)
+
+  const showToast = useCallback((message, type = 'error') => {
+    if (toastTimer.current) {
+      clearTimeout(toastTimer.current)
+    }
+    setToast({ show: true, message, type })
+    toastTimer.current = setTimeout(() => {
+      setToast({ show: false, message: '', type: 'error' })
+    }, 3000)
+  }, [])
 
   // ✅ Fix 4: 两个 fetch 并行执行
   useEffect(() => {
@@ -173,6 +186,34 @@ function Reader() {
     }
   }, [id, book])
 
+  const handleOpenBook = useCallback(async (app) => {
+    try {
+      const url = app
+        ? `/api/books/${id}/open?app=${encodeURIComponent(app)}`
+        : `/api/books/${id}/open`
+      const response = await fetch(url, { method: 'POST' })
+      const data = await response.json()
+      if (!response.ok) {
+        showToast('打开失败: ' + (data.detail || data.message), 'error')
+      } else {
+        showToast('已尝试用应用打开', 'success')
+      }
+    } catch (error) {
+      console.error('Error opening book:', error)
+      showToast('打开失败', 'error')
+    }
+    setOpenMenuOpen(false)
+  }, [id, showToast])
+
+  const handleCustomOpen = useCallback(() => {
+    const app = window.prompt('请输入应用路径（如 C:\\Program Files\\Typora\\Typora.exe）：')
+    if (app) {
+      handleOpenBook(app)
+    } else {
+      setOpenMenuOpen(false)
+    }
+  }, [handleOpenBook])
+
   // ✅ Fix 1 & 3: 统一文本提取，用 Map O(1) 查找，不再用 Math.random()
   const makeHeadingComponent = useCallback(
     (Tag) =>
@@ -227,6 +268,16 @@ function Reader() {
 
   return (
     <div className="flex h-screen bg-white">
+      {/* Toast 通知 */}
+      {toast.show && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm transition-opacity ${
+          toast.type === 'success'
+            ? 'bg-green-600 text-white'
+            : 'bg-red-600 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
       {/* 左侧目录栏 */}
       <aside
         className={`${
@@ -282,7 +333,7 @@ function Reader() {
         </nav>
 
         {/* 底部按钮 */}
-        <div className="p-3 border-t border-gray-200">
+        <div className="p-3 border-t border-gray-200 space-y-2">
           <button
             onClick={handleExport}
             className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
@@ -292,6 +343,40 @@ function Reader() {
             </svg>
             导出 Markdown
           </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setOpenMenuOpen(!openMenuOpen)}
+              className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              用其他应用打开
+            </button>
+            {openMenuOpen && (
+              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
+                <button
+                  onClick={() => handleOpenBook()}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  系统默认应用
+                </button>
+                <button
+                  onClick={() => handleOpenBook('Typora')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Typora
+                </button>
+                <button
+                  onClick={handleCustomOpen}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  其他应用...
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </aside>
 
