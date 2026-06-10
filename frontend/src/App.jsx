@@ -7,6 +7,7 @@ import Network from './pages/Network'
 import History from './pages/History'
 import useStore from './store'
 import { useState, useRef, useEffect } from 'react'
+import TypewriterHeading from './components/TypewriterHeading'
 
 const UI_LANGUAGES = [
   { value: "zh-CN", label: "中文（简体）" },
@@ -177,7 +178,7 @@ function NavBar() {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <img src="/icon.png" alt="Logo" className="h-8 w-8 mr-2" />
-            <span className="text-xl font-bold text-indigo-600">AI eBook Generator</span>
+            <TypewriterHeading as="span" text="AI eBook Generator" fontSize="1.25rem" className="text-indigo-600" />
           </div>
           <div className="flex items-center space-x-1">
             <a href="/generate" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.generate')}</a>

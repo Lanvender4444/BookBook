@@ -11,7 +11,7 @@ import { useState, useEffect, useRef } from 'react';
  * - 使用 JetBrains Mono / Share Tech Mono 开源等宽字体
  * - 带闪烁光标动画
  */
-export default function TypewriterHeading({ text, speed = 180, className = '' }) {
+export default function TypewriterHeading({ text, speed = 100, className = '', as: Tag = 'h1', fontSize = '2rem' }) {
   const [displayedText, setDisplayedText] = useState('');
   const genRef = useRef(0);
   const timeoutRef = useRef(null);
@@ -115,11 +115,11 @@ export default function TypewriterHeading({ text, speed = 180, className = '' })
   }, [text, speed]);
 
   return (
-    <h1
+    <Tag
       className={`typewriter-cursor ${className}`}
       style={{
         fontFamily: "'JetBrains Mono', 'Share Tech Mono', monospace",
-        fontSize: '2rem',
+        fontSize,
         fontWeight: 'bold',
         display: 'inline-block',
         paddingRight: '4px',
@@ -129,6 +129,6 @@ export default function TypewriterHeading({ text, speed = 180, className = '' })
     >
       {displayedText}
       {'\u00A0'}
-    </h1>
+    </Tag>
   );
 }
