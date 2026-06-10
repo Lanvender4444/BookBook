@@ -17,7 +17,10 @@ export const api = {
 
   async exportBook(id, format = 'markdown') {
     const response = await fetch(`${API_BASE}/books/${id}/export?format=${format}`)
-    return response.json()
+    if (format === 'markdown') {
+      return response.json()
+    }
+    return response
   },
 
   async generateStream(prompt, requirements, onEvent, providerId = null, modelName = null) {
@@ -25,15 +28,6 @@ export const api = {
     if (providerId) body.provider_id = providerId
     if (modelName) body.model_name = modelName
 
-  async openBook(id, app = null) {
-    const url = app
-      ? `${API_BASE}/books/${id}/open?app=${encodeURIComponent(app)}`
-      : `${API_BASE}/books/${id}/open`
-    const response = await fetch(url, { method: 'POST' })
-    return response.json()
-  },
-
-  async generateStream(prompt, requirements, onEvent) {
     const response = await fetch(`${API_BASE}/generate/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,6 +55,14 @@ export const api = {
         }
       }
     }
+  },
+
+  async openBook(id, app = null) {
+    const url = app
+      ? `${API_BASE}/books/${id}/open?app=${encodeURIComponent(app)}`
+      : `${API_BASE}/books/${id}/open`
+    const response = await fetch(url, { method: 'POST' })
+    return response.json()
   },
 
   async getPeers() {
