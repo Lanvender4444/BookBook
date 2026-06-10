@@ -141,7 +141,7 @@ class P2PService:
                     "source": b.source,
                     "language": b.language
                 })
-            writer.write(json.dumps({"status": "ok", "books": books_data}).encode())
+            writer.write(json.dumps({"status": "ok", "books": books_data}, ensure_ascii=False).encode())
             await writer.drain()
         finally:
             db.close()

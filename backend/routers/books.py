@@ -1,14 +1,18 @@
 import os
 import shutil
 import subprocess
+import re
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from services.book_builder import (
-    get_book, get_all_books, delete_book, 
-    export_to_markdown, get_book_chapters, update_books_dir
+    get_book, get_all_books, delete_book,
+    export_to_markdown, get_book_chapters, update_books_dir,
+    export_to_txt, export_to_epub, export_to_docx, export_to_pdf,
+    get_book_content, safe_filename_header
 )
 from config import BOOKS_DIR
 
@@ -54,13 +58,57 @@ def remove_book(book_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{book_id}/export")
 def export_book(book_id: str, format: str = "markdown", db: Session = Depends(get_db)):
+    book = get_book(db, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    md_content = get_book_content(db, book_id)
+    if md_content is None:
+        raise HTTPException(status_code=404, detail="Book content not found")
+
+    language = book.language or "zh-CN"
+
     if format == "markdown":
-        content = export_to_markdown(db, book_id)
-        if not content:
-            raise HTTPException(status_code=404, detail="Book not found")
-        return {"content": content}
+        return {"content": md_content}
+    elif format == "txt":
+        data = export_to_txt(md_content)
+        return Response(
+            content=data,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": safe_filename_header(book.title, "txt")}
+        )
+    elif format == "epub":
+        try:
+            data = export_to_epub(md_content, title=book.title, language=language)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"EPUB generation failed: {str(e)}")
+        return Response(
+            content=data,
+            media_type="application/epub+zip",
+            headers={"Content-Disposition": safe_filename_header(book.title, "epub")}
+        )
+    elif format == "docx":
+        try:
+            data = export_to_docx(md_content, title=book.title, language=language)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": safe_filename_header(book.title, "docx")}
+        )
+    elif format == "pdf":
+        try:
+            data = export_to_pdf(md_content, title=book.title, language=language)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": safe_filename_header(book.title, "pdf")}
+        )
     else:
-        raise HTTPException(status_code=400, detail="Unsupported format")
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {format}. Supported formats: markdown, txt, epub, docx, pdf")
 
 @router.get("/config/dir")
 def get_books_dir():
@@ -132,18 +180,18 @@ def open_book_local(book_id: str, app: str = None, db: Session = Depends(get_db)
 
     try:
         if app:
-            app_lower = app.lower().strip()
             found = _find_app_executable(app)
             if found:
                 subprocess.Popen([found, str(filepath)], shell=False)
             else:
-                # 作为命令直接尝试
-                subprocess.Popen(f'{app} "{str(filepath)}"', shell=True)
+                raise HTTPException(status_code=400, detail=f"Application not found: {app}")
         else:
             if os.name == 'nt':
                 os.startfile(str(filepath))
             else:
                 subprocess.Popen(['open', str(filepath)])
         return {"message": "Book opened successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
