@@ -146,7 +146,12 @@ def run_generation_task(
 
         task_status[history_id] = {
             "status": "completed",
-            "progress": {"stage": "done", "message": "生成完成", "book_id": book_id},
+            "progress": {
+                "stage": "done",
+                "message": "生成完成",
+                "book_id": book_id,
+                "book_title": outline.get("title", "未命名电子书"),
+            },
         }
 
     except Exception as e:
@@ -293,6 +298,7 @@ async def reconnect_stream(history_id: int, db: Session = Depends(get_db)):
                                         "stage": "done",
                                         "message": "生成完成",
                                         "book_id": history.book_id,
+                                        "book_title": history.outline.get("title", "未命名电子书") if history.outline else "未命名电子书",
                                     },
                                 }
                             ),
