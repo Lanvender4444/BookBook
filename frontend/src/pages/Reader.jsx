@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
+import { useI18n } from '../i18n'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -36,13 +37,25 @@ const extractText = (children) => {
 }
 
 function Reader() {
+  const { t } = useI18n()
   const { id } = useParams()
   const [book, setBook] = useState(null)
   const [content, setContent] = useState('')
   const [activeId, setActiveId] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [openMenuOpen, setOpenMenuOpen] = useState(false)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' })
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportMenuOpen && !e.target.closest('.export-dropdown-container')) {
+        setExportMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [exportMenuOpen])
 
   // ✅ Fix 2: ticking 用 ref 存，避免 observer 重建时状态丢失
   const tickingRef = useRef(false)
@@ -169,22 +182,68 @@ function Reader() {
     }
   }, [])
 
-  const handleExport = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/books/${id}/export?format=markdown`)
-      const data = await response.json()
+  const EXPORT_FORMATS = [
+    { value: 'markdown', label: 'Markdown (.md)', mime: 'text/markdown', ext: 'md' },
+    { value: 'txt', label: '纯文本 (.txt)', mime: 'text/plain', ext: 'txt' },
+    { value: 'epub', label: 'EPUB 电子书 (.epub)', mime: 'application/epub+zip', ext: 'epub' },
+    { value: 'docx', label: 'Word 文档 (.docx)', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ext: 'docx' },
+    { value: 'pdf', label: 'PDF (.pdf)', mime: 'application/pdf', ext: 'pdf' },
+  ]
 
-      const blob = new Blob([data.content], { type: 'text/markdown' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${book.title}.md`
-      a.click()
-      URL.revokeObjectURL(url)
+  const sanitizeFilename = (name) => {
+    return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim() || 'book'
+  }
+
+  const handleExport = useCallback(async (format = 'markdown') => {
+    try {
+      const fmt = EXPORT_FORMATS.find(f => f.value === format) || EXPORT_FORMATS[0]
+      const safeTitle = sanitizeFilename(book?.title || 'book')
+
+      if (format === 'markdown') {
+        const response = await fetch(`/api/books/${id}/export?format=markdown`)
+        const data = await response.json()
+        const blob = new Blob([data.content], { type: 'text/markdown' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${safeTitle}.${fmt.ext}`
+        a.click()
+        URL.revokeObjectURL(url)
+      } else {
+        const response = await fetch(`/api/books/${id}/export?format=${format}`)
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}))
+          showToast(errData.detail || '导出失败', 'error')
+          return
+        }
+
+        const disposition = response.headers.get('Content-Disposition')
+        let filename = `${safeTitle}.${fmt.ext}`
+        if (disposition) {
+          const utf8Match = disposition.match(/filename\*=UTF-8''(.+)/)
+          if (utf8Match) {
+            filename = decodeURIComponent(utf8Match[1])
+          } else {
+            const asciiMatch = disposition.match(/filename="?(.+?)"?$/)
+            if (asciiMatch) filename = asciiMatch[1]
+          }
+        }
+
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+      showToast('导出成功', 'success')
     } catch (error) {
       console.error('Error exporting book:', error)
+      showToast('导出失败', 'error')
     }
-  }, [id, book])
+    setExportMenuOpen(false)
+  }, [id, book, showToast])
 
   const handleOpenBook = useCallback(async (app) => {
     try {
@@ -334,15 +393,33 @@ function Reader() {
 
         {/* 底部按钮 */}
         <div className="p-3 border-t border-gray-200 space-y-2">
-          <button
-            onClick={handleExport}
-            className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            导出 Markdown
-          </button>
+          <div className="relative export-dropdown-container">
+            <button
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              导出
+              <svg className={`w-3 h-3 transition-transform ${exportMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {exportMenuOpen && (
+              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
+                {EXPORT_FORMATS.map((fmt) => (
+                  <button
+                    key={fmt.value}
+                    onClick={() => handleExport(fmt.value)}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                  >
+                    {fmt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="relative">
             <button

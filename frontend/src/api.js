@@ -28,7 +28,10 @@ export const api = {
 
   async exportBook(id, format = 'markdown') {
     const response = await fetch(`${API_BASE}/books/${id}/export?format=${format}`)
-    return response.json()
+    if (format === 'markdown') {
+      return response.json()
+    }
+    return response
   },
 
   async openBook(id, app = null) {
@@ -71,6 +74,14 @@ export const api = {
         }
       }
     }
+  },
+
+  async openBook(id, app = null) {
+    const url = app
+      ? `${API_BASE}/books/${id}/open?app=${encodeURIComponent(app)}`
+      : `${API_BASE}/books/${id}/open`
+    const response = await fetch(url, { method: 'POST' })
+    return response.json()
   },
 
   async getPeers() {
