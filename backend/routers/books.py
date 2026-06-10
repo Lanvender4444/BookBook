@@ -1,3 +1,7 @@
+import os
+import shutil
+import subprocess
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -69,3 +73,77 @@ def set_books_dir(request: UpdateDirRequest):
         return {"message": "Directory updated", "dir": request.path}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+def _find_app_executable(app_name: str) -> str:
+    """查找应用可执行文件路径，支持常见安装位置、PATH 和注册表"""
+    app_lower = app_name.lower().strip()
+
+    # 1. 尝试在 PATH 中查找
+    path_found = shutil.which(app_name)
+    if path_found:
+        return path_found
+
+    # 2. 常见安装路径
+    common_paths = {
+        'typora': [
+            r'C:\Program Files\Typora\Typora.exe',
+            r'C:\Program Files (x86)\Typora\Typora.exe',
+            os.path.expandvars(r'%LOCALAPPDATA%\Programs\Typora\Typora.exe'),
+            os.path.expandvars(r'%USERPROFILE%\AppData\Local\Programs\Typora\Typora.exe'),
+            os.path.expandvars(r'%USERPROFILE%\scoop\apps\typora\current\Typora.exe'),
+        ]
+    }
+
+    if app_lower in common_paths:
+        for p in common_paths[app_lower]:
+            if Path(p).exists():
+                return p
+
+    # 3. Windows 注册表查找
+    if os.name == 'nt' and app_lower == 'typora':
+        try:
+            import winreg
+            for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for key_path in [
+                    r'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Typora.exe',
+                    r'SOFTWARE\Typora',
+                ]:
+                    try:
+                        with winreg.OpenKey(hive, key_path) as key:
+                            val, _ = winreg.QueryValueEx(key, None)
+                            if val and Path(val).exists():
+                                return val
+                    except FileNotFoundError:
+                        continue
+        except Exception:
+            pass
+
+    return None
+
+@router.post("/{book_id}/open")
+def open_book_local(book_id: str, app: str = None, db: Session = Depends(get_db)):
+    book = get_book(db, book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    filepath = Path(book.file_path)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Book file not found")
+
+    try:
+        if app:
+            app_lower = app.lower().strip()
+            found = _find_app_executable(app)
+            if found:
+                subprocess.Popen([found, str(filepath)], shell=False)
+            else:
+                # 作为命令直接尝试
+                subprocess.Popen(f'{app} "{str(filepath)}"', shell=True)
+        else:
+            if os.name == 'nt':
+                os.startfile(str(filepath))
+            else:
+                subprocess.Popen(['open', str(filepath)])
+        return {"message": "Book opened successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
