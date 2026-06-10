@@ -22,6 +22,8 @@ export default function ProviderModal({ open, onClose }) {
   const [testResult, setTestResult] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
+  const [migrating, setMigrating] = useState(false)
+  const [migrateResult, setMigrateResult] = useState(null)
 
   const modalRef = useRef(null)
 
@@ -146,10 +148,18 @@ export default function ProviderModal({ open, onClose }) {
   }
 
   const handleMigrate = async () => {
-    const result = await api.migrateEnvKeys()
-    await loadProviders()
-    await loadActiveModel()
-    return result
+    setMigrating(true)
+    setMigrateResult(null)
+    try {
+      const result = await api.migrateEnvKeys()
+      await loadProviders()
+      await loadActiveModel()
+      setMigrateResult(result)
+    } catch (e) {
+      setMigrateResult({ migrated: [], message: e.message })
+    } finally {
+      setMigrating(false)
+    }
   }
 
   const removeModel = (index) => {
@@ -198,12 +208,21 @@ export default function ProviderModal({ open, onClose }) {
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
             />
             <button
-              onClick={async () => { const r = await handleMigrate(); alert(r.migrated?.length > 0 ? t('settings.migrateSuccess').replace('{count}', r.migrated.length) : t('settings.migrateNoKeys')) }}
-              className="px-3 py-2 text-xs bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
+              onClick={handleMigrate}
+              disabled={migrating}
+              className="px-3 py-2 text-xs bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap disabled:opacity-50"
             >
-              {t('settings.migrateEnv')}
+              {migrating ? t('settings.migrating') : t('settings.migrateEnv')}
             </button>
           </div>
+
+          {migrateResult && (
+            <div className={`mb-3 px-3 py-2 rounded-lg text-xs ${migrateResult.migrated && migrateResult.migrated.length > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+              {migrateResult.migrated && migrateResult.migrated.length > 0
+                ? t('settings.migrateSuccess').replace('{count}', migrateResult.migrated.length)
+                : t('settings.migrateNoKeys')}
+            </div>
+          )}
 
           {loading ? (
             <div className="py-8 text-center text-gray-400">{t('settings.loading')}</div>
