@@ -2,6 +2,7 @@ import uuid
 import json
 import re
 import io
+import os
 import html
 import tempfile
 from pathlib import Path
@@ -427,47 +428,146 @@ def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN"
 
 
 def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
-    """导出为 PDF（使用 weasyprint）"""
-    from weasyprint import HTML
+    """导出为 PDF（使用 reportlab，纯 Python 无系统依赖）"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.fonts import addMapping
 
     book_title, description, chapters = _parse_chapters(md_content)
     if title and title != "Book":
         book_title = title
 
-    html_parts = [f'''<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<style>
-  @page {{ margin: 2cm; size: A4; }}
-  body {{ font-family: "Noto Sans SC", "Microsoft YaHei", "SimSun", "PingFang SC", sans-serif; line-height: 1.8; color: #333; font-size: 14px; }}
-  h1 {{ font-size: 24px; text-align: center; margin: 2em 0 1em; border-bottom: 2px solid #333; padding-bottom: 0.5em; }}
-  h2 {{ font-size: 18px; margin: 1.5em 0 0.8em; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; page-break-before: always; }}
-  h3 {{ font-size: 16px; margin: 1em 0 0.5em; }}
-  h2:first-of-type {{ page-break-before: auto; }}
-  p {{ margin: 0.5em 0; text-indent: 2em; }}
-  .description {{ text-align: center; color: #666; margin: 1em 0 2em; }}
-  pre {{ background: #f5f5f5; padding: 1em; overflow-x: auto; font-size: 12px; }}
-  code {{ background: #f5f5f5; padding: 0.2em 0.4em; font-size: 0.9em; }}
-  blockquote {{ border-left: 3px solid #ccc; margin: 0.5em 0; padding: 0.5em 1em; color: #555; }}
-  strong {{ font-weight: bold; }}
-  em {{ font-style: italic; }}
-</style>
-</head>
-<body>
-<h1>{html.escape(book_title)}</h1>''']
+    font_name = _register_pdf_fonts()
 
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2.5 * cm,
+        bottomMargin=2.5 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'BookTitle', parent=styles['Title'],
+        fontSize=22, leading=28, alignment=TA_CENTER,
+        spaceAfter=12, fontName=font_name,
+    )
+    desc_style = ParagraphStyle(
+        'BookDesc', parent=styles['Normal'],
+        fontSize=12, leading=16, alignment=TA_CENTER,
+        textColor='#666666', spaceAfter=20, fontName=font_name,
+    )
+    h2_style = ParagraphStyle(
+        'BookH2', parent=styles['Heading2'],
+        fontSize=16, leading=20, spaceAfter=8, spaceBefore=20,
+        fontName=font_name,
+    )
+    body_style = ParagraphStyle(
+        'BookBody', parent=styles['Normal'],
+        fontSize=11, leading=18, spaceAfter=6,
+        firstLineIndent=22, fontName=font_name,
+    )
+    code_style = ParagraphStyle(
+        'BookCode', parent=styles['Code'],
+        fontSize=9, leading=13, fontName='Courier',
+        backColor='#F5F5F5', leftIndent=10, rightIndent=10,
+        spaceBefore=6, spaceAfter=6,
+    )
+
+    story = []
+
+    story.append(Paragraph(_pdf_escape(book_title), title_style))
+    story.append(Spacer(1, 6))
     if description:
-        html_parts.append(f'<p class="description">{html.escape(description)}</p>')
+        story.append(Paragraph(_pdf_escape(description), desc_style))
+        story.append(Spacer(1, 12))
 
-    html_parts.append(_markdown_to_full_html(md_content))
+    for ch in chapters:
+        story.append(PageBreak())
+        story.append(Paragraph(_pdf_escape(ch['title']), h2_style))
+        story.append(Spacer(1, 6))
 
-    html_parts.append('</body></html>')
+        paragraphs = ch['content'].split('\n')
+        for p_text in paragraphs:
+            p_text = p_text.strip()
+            if not p_text:
+                continue
+            if p_text.startswith('```'):
+                continue
+            if p_text.startswith('#'):
+                text = re.sub(r'^#+\s*', '', p_text)
+                story.append(Paragraph(_pdf_escape(text), h2_style if p_text.startswith('## ') else body_style))
+            elif p_text.startswith('- ') or p_text.startswith('* '):
+                text = p_text[2:]
+                text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
+                text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+                bullet_style = ParagraphStyle('Bullet', parent=body_style, firstLineIndent=0, leftIndent=20, bulletIndent=10)
+                story.append(Paragraph(_pdf_escape(text), bullet_style, bulletText='•'))
+            else:
+                clean = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', p_text)
+                clean = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', clean)
+                clean = re.sub(r'~~([^~]+)~~', r'\1', clean)
+                clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
+                clean = re.sub(r'!\[([^\]]*)\]\([^)]+\)', '', clean)
+                story.append(Paragraph(_pdf_escape(clean), body_style))
 
-    full_html = '\n'.join(html_parts)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
 
-    pdf_bytes = HTML(string=full_html).write_pdf()
-    return pdf_bytes
+
+def _register_pdf_fonts():
+    """注册 PDF 字体，优先使用系统中文字体"""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    candidates = []
+    if os.name == 'nt':
+        windir = os.environ.get('WINDIR', r'C:\Windows')
+        fonts_dir = os.path.join(windir, 'Fonts')
+        candidates = [
+            (os.path.join(fonts_dir, 'msyh.ttc'), 'msyh', 0),
+            (os.path.join(fonts_dir, 'msyhbd.ttc'), 'msyhbd', 0),
+            (os.path.join(fonts_dir, 'msyhl.ttc'), 'msyhl', 0),
+            (os.path.join(fonts_dir, 'simhei.ttf'), 'simhei', -1),
+            (os.path.join(fonts_dir, 'simsun.ttc'), 'simsun', 0),
+        ]
+    else:
+        candidates = [
+            ('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', 'notocjk', 0),
+            ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'notocjk', 0),
+            ('/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc', 'notocjk', 0),
+            ('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', 'wqy', 0),
+            ('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 'droid', -1),
+        ]
+
+    for path, name, idx in candidates:
+        try:
+            if os.path.exists(path):
+                pdfmetrics.registerFont(TTFont(name, path, subfontIndex=idx))
+                return name
+        except Exception:
+            continue
+
+    return 'Helvetica'
+
+
+def _pdf_escape(text: str) -> str:
+    """转义 reportlab Paragraph 中的特殊字符"""
+    if not text:
+        return ''
+    text = html.escape(text, quote=False)
+    text = text.replace('\n', '<br/>')
+    return text
 
 
 def _markdown_to_simple_html(md_text: str) -> str:
@@ -508,27 +608,7 @@ def _markdown_to_simple_html(md_text: str) -> str:
     return '\n'.join(result)
 
 
-def _markdown_to_full_html(md_text: str) -> str:
-    """将完整 Markdown 内容转为带章节的 HTML（用于 PDF）"""
-    html_parts = []
-    parts = re.split(r'\n## ', md_text)
-
-    for i, part in enumerate(parts):
-        if i == 0:
-            continue
-
-        lines = part.strip().split('\n', 1)
-        ch_title = lines[0].strip()
-        ch_title = re.sub(r'^(第\d+章[：:]?\s*|Chapter\s+\d+[\s:]*|Capítulo\s+\d+[\s:]*|Chapitre\s+\d+[\s:]*|Kapitel\s+\d+[\s:]*|Глава\s+\d+[\s:]*)', '', ch_title).strip()
-        ch_content = lines[1].strip() if len(lines) > 1 else ""
-        ch_html = _markdown_to_simple_html(ch_content)
-        html_parts.append(f'<h2>{ch_title}</h2>\n{ch_html}')
-
-    return '\n'.join(html_parts)
-
-
 def update_books_dir(new_dir: str):
     """更新书籍保存目录"""
-    import os
     os.environ['BOOKS_DIR'] = new_dir
     ensure_books_dir()
