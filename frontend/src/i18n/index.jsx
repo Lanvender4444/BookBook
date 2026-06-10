@@ -76,8 +76,20 @@ export function I18nProvider({ children }) {
     localStorage.setItem('locale', newLocale)
   }, [])
 
+  // 关键：JSON 加载完成前，不渲染任何子组件
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+          <span className="text-sm text-gray-500">Loading translations...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <I18nContext.Provider value={{ locale, t, changeLocale, loaded }}>
+    <I18nContext.Provider value={{ locale, t, changeLocale }}>
       {children}
     </I18nContext.Provider>
   )
