@@ -1,4 +1,15 @@
-const API_BASE = window.__TAURI_INTERNALS__ ? 'http://localhost:8000/api' : '/api'
+let API_BASE = (() => {
+  const isTauri = typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__)
+  if (isTauri) {
+    const port = window.__BOOKBOOK_BACKEND_PORT__ || 8000
+    return `http://localhost:${port}/api`
+  }
+  return '/api'
+})()
+
+export function setApiBase(base) {
+  API_BASE = base
+}
 
 export const api = {
   async getBooks() {

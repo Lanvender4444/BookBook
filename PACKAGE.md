@@ -4,7 +4,6 @@
 
 - **Node.js** >= 18
 - **Rust** >= 1.77.2（用于 Tauri 构建）
-  - 安装方法：访问 https://rustup.rs/ 或执行 `winget install Rustlang.Rustup`
 - **Python** >= 3.11
 - **PyInstaller**（已安装在 Python 环境中）
 

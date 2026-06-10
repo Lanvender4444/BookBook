@@ -1,9 +1,19 @@
 import os
+import json
 import platform
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# 加载根目录配置
+_project_root = Path(__file__).parent.parent
+_config_path = _project_root / "config.json"
+if _config_path.exists():
+    with open(_config_path, "r", encoding="utf-8") as f:
+        _app_config = json.load(f)
+else:
+    _app_config = {}
 
 BOOKS_DIR = os.getenv("BOOKS_DIR", str(Path.home() / "BookBook"))
 
@@ -32,7 +42,7 @@ QWEN_BASE_URL = os.getenv(
 KIMI_BASE_URL = os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1")
 
 P2P_ENABLED = os.getenv("P2P_ENABLED", "true").lower() == "true"
-P2P_PORT = int(os.getenv("P2P_PORT", "47833"))
+P2P_PORT = int(os.getenv("P2P_PORT", str(_app_config.get("p2p_port", 47833))))
 P2P_MAGIC = "EBOOK_P2P"
 P2P_APP_ID = "com.bookbook.ebookgenerator"
 P2P_VERSION = "1"
