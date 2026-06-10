@@ -3,7 +3,8 @@
     "generate": "Generate",
     "history": "History",
     "library": "Library",
-    "network": "Network"
+    "network": "Network",
+    "settings": "Settings"
   },
   "generate": {
     "title": "Generate eBook",
@@ -28,7 +29,10 @@
     "preparing": "Preparing...",
     "simple": "Easy",
     "medium": "Medium",
-    "hard": "Hard"
+    "hard": "Hard",
+    "changeModel": "Change",
+    "noModel": "No AI model configured",
+    "configureModel": "Configure"
   },
   "history": {
     "title": "Generation History",
@@ -149,5 +153,36 @@
   "modal": {
     "confirm": "Confirm",
     "cancel": "Cancel"
+  },
+  "settings": {
+    "title": "AI Model Settings",
+    "loading": "Loading...",
+    "searchProvider": "Search providers...",
+    "configured": "Configured",
+    "active": "Active",
+    "connect": "Connect",
+    "edit": "Edit",
+    "remove": "Remove",
+    "configure": "Configure",
+    "apiKeyPlaceholder": "Enter API Key...",
+    "getApiKey": "Get API Key",
+    "baseUrlHint": "Leave empty for default. For custom providers, enter the full API endpoint.",
+    "models": "Available Models",
+    "addModelPlaceholder": "Enter model name",
+    "add": "Add",
+    "testConnection": "Test Connection",
+    "testing": "Testing...",
+    "testSuccess": "Connection successful!",
+    "testFailed": "Connection failed",
+    "availableModels": "Available Models",
+    "save": "Save",
+    "saving": "Saving...",
+    "currentModel": "Current Model",
+    "deleteProvider": "Remove Provider",
+    "deleteConfirm": "Are you sure you want to remove this provider configuration? You will need to re-enter the API Key.",
+    "migrateEnv": "Import from .env",
+    "migrating": "Importing...",
+    "migrateSuccess": "Successfully imported {count} provider(s) from environment variables",
+    "migrateNoKeys": "No environment variable configurations found to import"
   }
 }

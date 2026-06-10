@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useI18n } from '../i18n'
+import { api } from '../api'
 import OutlineTree from '../components/OutlineTree'
 import ProgressBar from '../components/ProgressBar'
 import CustomSelect from '../components/CustomSelect'
@@ -25,6 +26,7 @@ function Generate() {
   const [totalChapters, setTotalChapters] = useState(0)
   const [historyId, setHistoryId] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
+  const [activeModel, setActiveModel] = useState(null)
   const navigate = useNavigate()
   
   const abortControllerRef = useRef(null)
@@ -38,6 +40,12 @@ function Generate() {
         abortControllerRef.current.abort()
       }
     }
+  }, [])
+
+  useEffect(() => {
+    api.getActiveModel().then(data => {
+      if (data.active) setActiveModel(data.active)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -170,7 +178,9 @@ function Generate() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           prompt, 
-          requirements: { ...requirements, language: locale } 
+          requirements: { ...requirements, language: locale },
+          provider_id: activeModel?.provider_id || null,
+          model_name: activeModel?.model_name || null,
         }),
         signal
       })
@@ -224,6 +234,22 @@ function Generate() {
           )}
         </div>
         
+        {activeModel && (
+          <div className="flex items-center gap-2 mb-4 px-1">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            <span className="text-xs text-gray-500">
+              {activeModel.provider_name} / {activeModel.model_name}
+            </span>
+            <a href="/settings" className="text-xs text-indigo-600 hover:underline">{t('generate.changeModel')}</a>
+          </div>
+        )}
+        {!activeModel && (
+          <div className="flex items-center gap-2 mb-4 px-1">
+            <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+            <span className="text-xs text-gray-500">{t('generate.noModel')}</span>
+            <a href="/settings" className="text-xs text-indigo-600 hover:underline">{t('generate.configureModel')}</a>
+          </div>
+        )}
         <div className="mt-4 grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('generate.difficulty')}</label>

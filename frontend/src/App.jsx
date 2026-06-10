@@ -5,6 +5,7 @@ import Library from './pages/Library'
 import Reader from './pages/Reader'
 import Network from './pages/Network'
 import History from './pages/History'
+import Settings from './pages/Settings'
 import { useState, useRef, useEffect } from 'react'
 
 const UI_LANGUAGES = [
@@ -183,6 +184,7 @@ function NavBar() {
             <a href="/history" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.history')}</a>
             <a href="/library" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.library')}</a>
             <a href="/network" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.network')}</a>
+            <a href="/settings" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.settings')}</a>
             <div className="ml-2 pl-2 border-l border-gray-200">
               <LanguageSwitcher />
             </div>
@@ -206,6 +208,7 @@ function App() {
             <Route path="/library" element={<Library />} />
             <Route path="/reader/:id" element={<Reader />} />
             <Route path="/network" element={<Network />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </div>
       </I18nProvider>
