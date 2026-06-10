@@ -3,8 +3,7 @@
     "generate": "生成",
     "history": "历史",
     "library": "书库",
-    "network": "网络",
-    "settings": "设置"
+    "network": "网络"
   },
   "generate": {
     "title": "生成电子书",
@@ -166,7 +165,7 @@
     "configure": "配置",
     "apiKeyPlaceholder": "输入 API Key...",
     "getApiKey": "获取 API Key",
-    "baseUrlHint": "留空使用默认地址，自定义服务商请填写完整 API 地址",
+    "baseUrlHint": "留空使用默认地址",
     "models": "可用模型",
     "addModelPlaceholder": "输入模型名称",
     "add": "添加",
@@ -175,14 +174,16 @@
     "testSuccess": "连接成功！",
     "testFailed": "连接失败",
     "availableModels": "可用模型",
+    "availableProviders": "可用服务商",
     "save": "保存",
     "saving": "保存中...",
     "currentModel": "当前模型",
     "deleteProvider": "移除服务商",
     "deleteConfirm": "确定要移除此服务商的配置吗？移除后需要重新输入 API Key。",
-    "migrateEnv": "导入环境变量",
+    "migrateEnv": "导入 .env",
     "migrating": "导入中...",
     "migrateSuccess": "成功从环境变量导入 {count} 个服务商配置",
-    "migrateNoKeys": "未发现可导入的环境变量配置"
+    "migrateNoKeys": "未发现可导入的环境变量配置",
+    "noResults": "无匹配结果"
   }
 }

@@ -3,8 +3,7 @@
     "generate": "Generate",
     "history": "History",
     "library": "Library",
-    "network": "Network",
-    "settings": "Settings"
+    "network": "Network"
   },
   "generate": {
     "title": "Generate eBook",
@@ -166,7 +165,7 @@
     "configure": "Configure",
     "apiKeyPlaceholder": "Enter API Key...",
     "getApiKey": "Get API Key",
-    "baseUrlHint": "Leave empty for default. For custom providers, enter the full API endpoint.",
+    "baseUrlHint": "Leave empty for default",
     "models": "Available Models",
     "addModelPlaceholder": "Enter model name",
     "add": "Add",
@@ -175,14 +174,16 @@
     "testSuccess": "Connection successful!",
     "testFailed": "Connection failed",
     "availableModels": "Available Models",
+    "availableProviders": "Available Providers",
     "save": "Save",
     "saving": "Saving...",
     "currentModel": "Current Model",
     "deleteProvider": "Remove Provider",
     "deleteConfirm": "Are you sure you want to remove this provider configuration? You will need to re-enter the API Key.",
-    "migrateEnv": "Import from .env",
+    "migrateEnv": "Import .env",
     "migrating": "Importing...",
     "migrateSuccess": "Successfully imported {count} provider(s) from environment variables",
-    "migrateNoKeys": "No environment variable configurations found to import"
+    "migrateNoKeys": "No environment variable configurations found to import",
+    "noResults": "No results found"
   }
 }

@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import { api } from '../api'
+import useStore from '../store'
 import OutlineTree from '../components/OutlineTree'
 import ProgressBar from '../components/ProgressBar'
 import CustomSelect from '../components/CustomSelect'
 import CustomInput from '../components/CustomInput'
 import TypewriterHeading from '../components/TypewriterHeading'
 import TypewriterPlaceholder from '../components/TypewriterPlaceholder'
+import ProviderModal from '../components/ProviderModal'
 
 function Generate() {
   const { t, locale } = useI18n()
@@ -26,7 +28,8 @@ function Generate() {
   const [totalChapters, setTotalChapters] = useState(0)
   const [historyId, setHistoryId] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
-  const [activeModel, setActiveModel] = useState(null)
+  const [showProviderModal, setShowProviderModal] = useState(false)
+  const activeModel = useStore((s) => s.activeModel)
   const navigate = useNavigate()
   
   const abortControllerRef = useRef(null)
@@ -40,12 +43,6 @@ function Generate() {
         abortControllerRef.current.abort()
       }
     }
-  }, [])
-
-  useEffect(() => {
-    api.getActiveModel().then(data => {
-      if (data.active) setActiveModel(data.active)
-    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -240,14 +237,14 @@ function Generate() {
             <span className="text-xs text-gray-500">
               {activeModel.provider_name} / {activeModel.model_name}
             </span>
-            <a href="/settings" className="text-xs text-indigo-600 hover:underline">{t('generate.changeModel')}</a>
+            <button onClick={() => setShowProviderModal(true)} className="text-xs text-indigo-600 hover:underline">{t('generate.changeModel')}</button>
           </div>
         )}
         {!activeModel && (
           <div className="flex items-center gap-2 mb-4 px-1">
-            <div className="w-2 h-2 rounded-full bg-orange-400"></div>
+            <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></div>
             <span className="text-xs text-gray-500">{t('generate.noModel')}</span>
-            <a href="/settings" className="text-xs text-indigo-600 hover:underline">{t('generate.configureModel')}</a>
+            <button onClick={() => setShowProviderModal(true)} className="text-xs text-indigo-600 hover:underline">{t('generate.configureModel')}</button>
           </div>
         )}
         <div className="mt-4 grid grid-cols-2 gap-4">
@@ -342,6 +339,8 @@ function Generate() {
           <p className="text-red-700">{statusMessage}</p>
         </div>
       )}
+
+      <ProviderModal open={showProviderModal} onClose={() => setShowProviderModal(false)} />
     </div>
   )
 }
