@@ -30,8 +30,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")
 QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+QWEN_INTL_API_KEY = os.getenv("QWEN_INTL_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 KIMI_API_KEY = os.getenv("KIMI_API_KEY", "")
+MOONSHOT_API_KEY = os.getenv("MOONSHOT_API_KEY", "")
+SILICONFLOW_INTL_API_KEY = os.getenv("SILICONFLOW_INTL_API_KEY", "")
 
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
@@ -39,7 +42,14 @@ ZHIPU_BASE_URL = os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/
 QWEN_BASE_URL = os.getenv(
     "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
+QWEN_INTL_BASE_URL = os.getenv(
+    "QWEN_INTL_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+)
 KIMI_BASE_URL = os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1")
+MOONSHOT_BASE_URL = os.getenv("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1")
+SILICONFLOW_INTL_BASE_URL = os.getenv(
+    "SILICONFLOW_INTL_BASE_URL", "https://api.siliconflow.com/v1"
+)
 
 P2P_ENABLED = os.getenv("P2P_ENABLED", "true").lower() == "true"
 P2P_PORT = int(os.getenv("P2P_PORT", str(_app_config.get("p2p_port", 47833))))
@@ -139,6 +149,19 @@ PROVIDERS = {
         "website": "https://dashscope.console.aliyun.com/",
         "env_key": "QWEN_API_KEY",
     },
+    "qwen_intl": {
+        "name": "通义千问 (国际)",
+        "api_type": "openai_compatible",
+        "default_base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "default_models": [
+            "qwen-max",
+            "qwen-plus",
+            "qwen-turbo",
+            "qwen-long",
+        ],
+        "website": "https://dashscope-intl.console.aliyun.com/",
+        "env_key": "QWEN_INTL_API_KEY",
+    },
     "kimi": {
         "name": "Moonshot (Kimi)",
         "api_type": "openai_compatible",
@@ -150,6 +173,18 @@ PROVIDERS = {
         ],
         "website": "https://platform.moonshot.cn/",
         "env_key": "KIMI_API_KEY",
+    },
+    "moonshot": {
+        "name": "Moonshot (国际)",
+        "api_type": "openai_compatible",
+        "default_base_url": "https://api.moonshot.ai/v1",
+        "default_models": [
+            "moonshot-v1-8k",
+            "moonshot-v1-32k",
+            "moonshot-v1-128k",
+        ],
+        "website": "https://platform.kimi.com/",
+        "env_key": "MOONSHOT_API_KEY",
     },
     "openrouter": {
         "name": "OpenRouter",
@@ -345,6 +380,18 @@ PROVIDERS = {
         ],
         "website": "https://cloud.siliconflow.cn/",
     },
+    "siliconflow_intl": {
+        "name": "SiliconFlow (国际)",
+        "api_type": "openai_compatible",
+        "default_base_url": "https://api.siliconflow.com/v1",
+        "default_models": [
+            "Qwen/Qwen2.5-72B-Instruct",
+            "deepseek-ai/DeepSeek-V3",
+            "meta-llama/Llama-3.3-70B-Instruct",
+        ],
+        "website": "https://siliconflow.com/",
+        "env_key": "SILICONFLOW_INTL_API_KEY",
+    },
     "baichuan": {
         "name": "百川 (Baichuan)",
         "api_type": "openai_compatible",
@@ -428,16 +475,25 @@ PROVIDER_CATEGORIES = [
         "providers": ["anthropic", "openai", "deepseek", "gemini", "mistral"],
     },
     {
-        "id": "chinese",
-        "name": "国内服务商",
+        "id": "chinese_domestic",
+        "name": "国内服务商·国内源",
         "providers": [
             "zhipu",
             "qwen",
             "kimi",
-            "baichuan",
             "volcengine",
-            "yi",
             "siliconflow",
+        ],
+    },
+    {
+        "id": "chinese_international",
+        "name": "国内服务商·国际源",
+        "providers": [
+            "baichuan",
+            "yi",
+            "moonshot",
+            "qwen_intl",
+            "siliconflow_intl",
         ],
     },
     {

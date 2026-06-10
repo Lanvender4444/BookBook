@@ -464,13 +464,19 @@ def migrate_env_keys(db: Session = Depends(get_db)):
         DEEPSEEK_API_KEY,
         ZHIPU_API_KEY,
         QWEN_API_KEY,
+        QWEN_INTL_API_KEY,
         GEMINI_API_KEY,
         KIMI_API_KEY,
+        MOONSHOT_API_KEY,
+        SILICONFLOW_INTL_API_KEY,
         OPENAI_BASE_URL,
         DEEPSEEK_BASE_URL,
         ZHIPU_BASE_URL,
         QWEN_BASE_URL,
+        QWEN_INTL_BASE_URL,
         KIMI_BASE_URL,
+        MOONSHOT_BASE_URL,
+        SILICONFLOW_INTL_BASE_URL,
     )
 
     env_mappings = [
@@ -479,8 +485,11 @@ def migrate_env_keys(db: Session = Depends(get_db)):
         ("deepseek", DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL),
         ("zhipu", ZHIPU_API_KEY, ZHIPU_BASE_URL),
         ("qwen", QWEN_API_KEY, QWEN_BASE_URL),
+        ("qwen_intl", QWEN_INTL_API_KEY, QWEN_INTL_BASE_URL),
         ("gemini", GEMINI_API_KEY, None),
         ("kimi", KIMI_API_KEY, KIMI_BASE_URL),
+        ("moonshot", MOONSHOT_API_KEY, MOONSHOT_BASE_URL),
+        ("siliconflow_intl", SILICONFLOW_INTL_API_KEY, SILICONFLOW_INTL_BASE_URL),
     ]
 
     migrated = []
