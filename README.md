@@ -37,7 +37,7 @@ uv run python -c "from database import init_db; init_db()"
 ### 启动后端服务
 ```bash
 cd backend
-uv run uvicorn main:app --reload --port 8000
+uv run main.py
 ```
 后端将运行在 http://localhost:8000
 
