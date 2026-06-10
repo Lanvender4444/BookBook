@@ -1,4 +1,4 @@
-const API_BASE = '/api'
+const API_BASE = window.__TAURI_INTERNALS__ ? 'http://localhost:8000/api' : '/api'
 
 export const api = {
   async getBooks() {
@@ -20,11 +20,6 @@ export const api = {
     return response.json()
   },
 
-  async generateStream(prompt, requirements, onEvent, providerId = null, modelName = null) {
-    const body = { prompt, requirements }
-    if (providerId) body.provider_id = providerId
-    if (modelName) body.model_name = modelName
-
   async openBook(id, app = null) {
     const url = app
       ? `${API_BASE}/books/${id}/open?app=${encodeURIComponent(app)}`
@@ -33,7 +28,11 @@ export const api = {
     return response.json()
   },
 
-  async generateStream(prompt, requirements, onEvent) {
+  async generateStream(prompt, requirements, onEvent, providerId = null, modelName = null) {
+    const body = { prompt, requirements }
+    if (providerId) body.provider_id = providerId
+    if (modelName) body.model_name = modelName
+
     const response = await fetch(`${API_BASE}/generate/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

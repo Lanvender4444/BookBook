@@ -10,6 +10,7 @@ import CustomInput from '../components/CustomInput'
 import TypewriterHeading from '../components/TypewriterHeading'
 import TypewriterPlaceholder from '../components/TypewriterPlaceholder'
 import ProviderModal from '../components/ProviderModal'
+import { sendSystemNotification, requestNotificationPermission } from '../utils/notify'
 
 function Generate() {
   const { t, locale } = useI18n()
@@ -143,7 +144,18 @@ function Generate() {
     setGenerating(false)
     generatingRef.current = false
     setStatusMessage(t('generate.completed'))
-    if (data.book_id) navigate(`/reader/${data.book_id}`)
+    if (data.book_id) {
+      const title = data.book_title || outline?.title || '未命名电子书'
+      // 发送系统级右下角通知，无论当前在浏览什么页面都会显示
+      sendSystemNotification(
+        '电子书制作完成',
+        `《${title}》已生成完毕，点击查看`,
+        () => {
+          window.focus()
+          navigate(`/reader/${data.book_id}`)
+        }
+      )
+    }
   }
 
   const handleErrorEvent = (data) => {
@@ -154,12 +166,15 @@ function Generate() {
 
   const handleGenerate = async () => {
     if (!prompt.trim() || generatingRef.current) return
-    
+
+    // 预请求通知权限，确保完成后能弹出系统通知
+    requestNotificationPermission()
+
     if (abortControllerRef.current) abortControllerRef.current.abort()
-    
+
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
-    
+
     setGenerating(true)
     generatingRef.current = true
     setOutline(null)
@@ -168,13 +183,13 @@ function Generate() {
     setTotalChapters(0)
     setHistoryId(null)
     setStatusMessage(t('generate.preparing'))
-    
+
     try {
       const response = await fetch('/api/generate/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          prompt, 
+        body: JSON.stringify({
+          prompt,
           requirements: { ...requirements, language: locale },
           provider_id: activeModel?.provider_id || null,
           model_name: activeModel?.model_name || null,
