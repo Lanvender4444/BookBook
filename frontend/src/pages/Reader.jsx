@@ -190,9 +190,14 @@ function Reader() {
     { value: 'pdf', label: 'PDF (.pdf)', mime: 'application/pdf', ext: 'pdf' },
   ]
 
+  const sanitizeFilename = (name) => {
+    return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim() || 'book'
+  }
+
   const handleExport = useCallback(async (format = 'markdown') => {
     try {
       const fmt = EXPORT_FORMATS.find(f => f.value === format) || EXPORT_FORMATS[0]
+      const safeTitle = sanitizeFilename(book?.title || 'book')
 
       if (format === 'markdown') {
         const response = await fetch(`/api/books/${id}/export?format=markdown`)
@@ -201,7 +206,7 @@ function Reader() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `${book.title}.${fmt.ext}`
+        a.download = `${safeTitle}.${fmt.ext}`
         a.click()
         URL.revokeObjectURL(url)
       } else {
@@ -211,11 +216,24 @@ function Reader() {
           showToast(errData.detail || '导出失败', 'error')
           return
         }
+
+        const disposition = response.headers.get('Content-Disposition')
+        let filename = `${safeTitle}.${fmt.ext}`
+        if (disposition) {
+          const utf8Match = disposition.match(/filename\*=UTF-8''(.+)/)
+          if (utf8Match) {
+            filename = decodeURIComponent(utf8Match[1])
+          } else {
+            const asciiMatch = disposition.match(/filename="?(.+?)"?$/)
+            if (asciiMatch) filename = asciiMatch[1]
+          }
+        }
+
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `${book.title}.${fmt.ext}`
+        a.download = filename
         a.click()
         URL.revokeObjectURL(url)
       }

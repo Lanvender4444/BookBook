@@ -2,18 +2,36 @@ import uuid
 import json
 import re
 import io
+import html
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 from datetime import datetime
 from sqlalchemy.orm import Session
 from models import Book
 from config import BOOKS_DIR, ensure_books_dir
 
+WINDOWS_RESERVED = {
+    'con', 'prn', 'aux', 'nul',
+    'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+    'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
+}
+
 def sanitize_filename(name: str) -> str:
-    """清理文件名，移除非法字符"""
+    """清理文件名，移除非法字符，兼容多语言"""
+    name = re.sub(r'[\x00-\x1f\x7f]', '', name)
     name = re.sub(r'[<>:"/\\|?*]', '', name)
-    name = name.strip()[:100]  # 限制长度
+    name = name.strip(' .').strip()[:100]
+    if name.lower() in WINDOWS_RESERVED:
+        name = f"_{name}"
     return name if name else "untitled"
+
+def safe_filename_header(title: str, ext: str) -> str:
+    """生成 Content-Disposition header，同时提供 ASCII fallback 和 UTF-8 编码"""
+    safe = sanitize_filename(title)
+    ascii_safe = re.sub(r'[^\x20-\x7e]', '', safe).strip(' .') or "book"
+    encoded = quote(safe)
+    return f'attachment; filename="{ascii_safe}.{ext}"; filename*=UTF-8\'\'{encoded}.{ext}'
 
 def get_book_filepath(book_id: str, title: str) -> Path:
     """获取书籍文件保存路径"""
@@ -21,6 +39,31 @@ def get_book_filepath(book_id: str, title: str) -> Path:
     safe_title = sanitize_filename(title)
     filename = f"{book_id}_{safe_title}.md"
     return Path(BOOKS_DIR) / filename
+
+def _chapter_prefix(index: int, language: str = "zh-CN") -> str:
+    lang = (language or "").lower()
+    if lang.startswith("zh"):
+        return f"第{index}章："
+    elif lang.startswith("ja"):
+        return f"第{index}章："
+    elif lang.startswith("ko"):
+        return f"제{index}장: "
+    elif lang == "en":
+        return f"Chapter {index}: "
+    elif lang.startswith("es"):
+        return f"Capítulo {index}: "
+    elif lang.startswith("fr"):
+        return f"Chapitre {index}: "
+    elif lang.startswith("de"):
+        return f"Kapitel {index}: "
+    elif lang.startswith("pt"):
+        return f"Capítulo {index}: "
+    elif lang.startswith("ru"):
+        return f"Глава {index}: "
+    elif lang.startswith("ar"):
+        return f"الفصل {index}: "
+    else:
+        return f"Chapter {index}: "
 
 def save_book(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN") -> str:
     """保存书籍到本地文件和数据库"""
@@ -31,7 +74,7 @@ def save_book(db: Session, outline: dict, chapters: list, user_id: str, language
     md_content += f"{outline['description']}\n\n---\n\n"
     
     for i, (chapter_data, content) in enumerate(zip(outline['chapters'], chapters)):
-        md_content += f"## 第{i+1}章：{chapter_data['title']}\n\n{content}\n\n"
+        md_content += f"## {_chapter_prefix(i+1, language)}{chapter_data['title']}\n\n{content}\n\n"
     
     # 保存到本地文件
     filepath = get_book_filepath(book_id, outline['title'])
@@ -63,7 +106,7 @@ def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str, lan
     md_content += f"{outline['description']}\n\n---\n\n"
     
     for i, (chapter_data, content) in enumerate(zip(outline['chapters'], chapters)):
-        md_content += f"## 第{i+1}章：{chapter_data['title']}\n\n{content}\n\n"
+        md_content += f"## {_chapter_prefix(i+1, language)}{chapter_data['title']}\n\n{content}\n\n"
     
     # 保存到本地文件
     filepath = get_book_filepath(book_id, outline['title'])
@@ -169,7 +212,7 @@ def get_book_chapters(db: Session, book_id: str) -> list:
         chapter_content = lines[1].strip() if len(lines) > 1 else ""
         
         # 移除章节标题中的"第X章："前缀
-        title = re.sub(r'^第\d+章：?', '', title).strip()
+        title = re.sub(r'^(第\d+章[：:]?\s*|Chapter\s+\d+[\s:]*|Capítulo\s+\d+[\s:]*|Chapitre\s+\d+[\s:]*|Kapitel\s+\d+[\s:]*|Глава\s+\d+[\s:]*)', '', title).strip()
         
         chapters.append({
             'index': i - 1,
@@ -206,7 +249,7 @@ def _parse_chapters(md_content: str):
             lines_text = part.strip().split('\n', 1)
             ch_title = lines_text[0].strip()
             ch_content = lines_text[1].strip() if len(lines_text) > 1 else ""
-            ch_title = re.sub(r'^第\d+章：?', '', ch_title).strip()
+            ch_title = re.sub(r'^(第\d+章[：:]?\s*|Chapter\s+\d+[\s:]*|Capítulo\s+\d+[\s:]*|Chapitre\s+\d+[\s:]*|Kapitel\s+\d+[\s:]*|Глава\s+\d+[\s:]*)', '', ch_title).strip()
             chapters.append({"title": ch_title, "content": ch_content})
 
     return title, description, chapters
@@ -229,7 +272,7 @@ def export_to_txt(md_content: str) -> bytes:
     return text.strip().encode('utf-8')
 
 
-def export_to_epub(md_content: str, title: str = "Book") -> bytes:
+def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
     """导出为 EPUB"""
     from ebooklib import epub
 
@@ -237,13 +280,15 @@ def export_to_epub(md_content: str, title: str = "Book") -> bytes:
     if title and title != "Book":
         book_title = title
 
+    epub_lang = (language or "zh").split("-")[0]
+
     book = epub.EpubBook()
     book.set_identifier(str(uuid.uuid4()))
     book.set_title(book_title)
-    book.set_language('zh')
+    book.set_language(epub_lang)
     book.add_author('AI eBook Generator')
     if description:
-        book.add_metadata('DC', 'description', description)
+        book.add_metadata('DC', 'description', html.escape(description))
 
     spine_items = ['nav']
     toc_items = []
@@ -263,10 +308,10 @@ def export_to_epub(md_content: str, title: str = "Book") -> bytes:
     book.add_item(nav_css)
 
     intro_html = f'''<html><body>
-    <h1>{book_title}</h1>
-    {'<p>' + description + '</p>' if description else ''}
+    <h1>{html.escape(book_title)}</h1>
+    {'<p>' + html.escape(description) + '</p>' if description else ''}
     </body></html>'''
-    intro = epub.EpubHtml(title=book_title, file_name='intro.xhtml', lang='zh')
+    intro = epub.EpubHtml(title=book_title, file_name='intro.xhtml', lang=epub_lang)
     intro.content = intro_html
     intro.add_item(nav_css)
     book.add_item(intro)
@@ -275,12 +320,12 @@ def export_to_epub(md_content: str, title: str = "Book") -> bytes:
     for i, ch in enumerate(chapters):
         ch_html_content = _markdown_to_simple_html(ch['content'])
         chapter = epub.EpubHtml(
-            title=ch['title'],
+            title=html.escape(ch['title']),
             file_name=f'chapter_{i+1}.xhtml',
-            lang='zh'
+            lang=epub_lang
         )
         chapter.content = f'''<html><head><link rel="stylesheet" href="style/nav.css"/></head>
-        <body><h2>{ch['title']}</h2>{ch_html_content}</body></html>'''
+        <body><h2>{html.escape(ch['title'])}</h2>{ch_html_content}</body></html>'''
         chapter.add_item(nav_css)
         book.add_item(chapter)
         spine_items.append(chapter)
@@ -297,7 +342,7 @@ def export_to_epub(md_content: str, title: str = "Book") -> bytes:
     return buffer.read()
 
 
-def export_to_docx(md_content: str, title: str = "Book") -> bytes:
+def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
     """导出为 Word (.docx)"""
     from docx import Document
     from docx.shared import Pt, Inches
@@ -381,7 +426,7 @@ def export_to_docx(md_content: str, title: str = "Book") -> bytes:
     return buffer.read()
 
 
-def export_to_pdf(md_content: str, title: str = "Book") -> bytes:
+def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
     """导出为 PDF（使用 weasyprint）"""
     from weasyprint import HTML
 
@@ -410,10 +455,10 @@ def export_to_pdf(md_content: str, title: str = "Book") -> bytes:
 </style>
 </head>
 <body>
-<h1>{book_title}</h1>''']
+<h1>{html.escape(book_title)}</h1>''']
 
     if description:
-        html_parts.append(f'<p class="description">{description}</p>')
+        html_parts.append(f'<p class="description">{html.escape(description)}</p>')
 
     html_parts.append(_markdown_to_full_html(md_content))
 
@@ -474,7 +519,7 @@ def _markdown_to_full_html(md_text: str) -> str:
 
         lines = part.strip().split('\n', 1)
         ch_title = lines[0].strip()
-        ch_title = re.sub(r'^第\d+章：?', '', ch_title).strip()
+        ch_title = re.sub(r'^(第\d+章[：:]?\s*|Chapter\s+\d+[\s:]*|Capítulo\s+\d+[\s:]*|Chapitre\s+\d+[\s:]*|Kapitel\s+\d+[\s:]*|Глава\s+\d+[\s:]*)', '', ch_title).strip()
         ch_content = lines[1].strip() if len(lines) > 1 else ""
         ch_html = _markdown_to_simple_html(ch_content)
         html_parts.append(f'<h2>{ch_title}</h2>\n{ch_html}')
