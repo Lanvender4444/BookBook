@@ -45,6 +45,7 @@ function Reader() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [openMenuOpen, setOpenMenuOpen] = useState(false)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [toast, setToast] = useState({ show: false, message: '', type: 'error' })
 
   useEffect(() => {
@@ -195,6 +196,8 @@ function Reader() {
   }
 
   const handleExport = useCallback(async (format = 'markdown') => {
+    setExporting(true)
+    setExportMenuOpen(false)
     try {
       const fmt = EXPORT_FORMATS.find(f => f.value === format) || EXPORT_FORMATS[0]
       const safeTitle = sanitizeFilename(book?.title || 'book')
@@ -241,8 +244,9 @@ function Reader() {
     } catch (error) {
       console.error('Error exporting book:', error)
       showToast('导出失败', 'error')
+    } finally {
+      setExporting(false)
     }
-    setExportMenuOpen(false)
   }, [id, book, showToast])
 
   const handleOpenBook = useCallback(async (app) => {
@@ -395,13 +399,30 @@ function Reader() {
         <div className="p-3 border-t border-gray-200 space-y-2">
           <div className="relative export-dropdown-container">
             <button
-              onClick={() => setExportMenuOpen(!exportMenuOpen)}
-              className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+              onClick={() => { if (!exporting) setExportMenuOpen(!exportMenuOpen) }}
+              disabled={exporting}
+              className={`w-full py-2 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors ${
+                exporting
+                  ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              导出
+              {exporting ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  导出中……
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  导出
+                </>
+              )}
               <svg className={`w-3 h-3 transition-transform ${exportMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
