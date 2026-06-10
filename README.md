@@ -12,14 +12,14 @@
 
 ## 快速开始
 ### 配置环境变量
-```
+```bash
 cd backend
 copy .env.example .env
 ```
 
 ### 使用 uv 安装后端依赖
 
-```
+```bash
 cd backend
 
 # 同步安装所有依赖（自动创建虚拟环境）
@@ -30,31 +30,28 @@ uv sync --python 3.11
 ```
 
 ### 初始化数据库
-```cd backend
+```bash
 uv run python -c "from database import init_db; init_db()"
-
 ```
 
 ### 启动后端服务
-```
+```bash
 cd backend
 uv run uvicorn main:app --reload --port 8000
 ```
-说明： uv run 会自动使用项目虚拟环境中的 Python 运行命令，无需手动激活环境。
-
 后端将运行在 http://localhost:8000
 
 API 文档地址： http://localhost:8000/docs
 
 ### 安装前端依赖
-```
+```bash
 cd frontend
 npm install
 ```
 
 ### 启动前端开发服务器
 
-```
+```bash
 cd frontend
 npm run dev
 ```
