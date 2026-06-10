@@ -1,0 +1,6 @@
+{
+  "backend_port": 8000,
+  "frontend_port": 5173,
+  "p2p_port": 47833,
+  "_comment": "修改端口后请重启前后端服务。Tauri 打包版会自动读取此配置。"
+}

@@ -1,4 +1,15 @@
-const API_BASE = '/api'
+let API_BASE = (() => {
+  const isTauri = typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__)
+  if (isTauri) {
+    const port = window.__BOOKBOOK_BACKEND_PORT__ || 8000
+    return `http://localhost:${port}/api`
+  }
+  return '/api'
+})()
+
+export function setApiBase(base) {
+  API_BASE = base
+}
 
 export const api = {
   async getBooks() {
@@ -21,6 +32,14 @@ export const api = {
       return response.json()
     }
     return response
+  },
+
+  async openBook(id, app = null) {
+    const url = app
+      ? `${API_BASE}/books/${id}/open?app=${encodeURIComponent(app)}`
+      : `${API_BASE}/books/${id}/open`
+    const response = await fetch(url, { method: 'POST' })
+    return response.json()
   },
 
   async generateStream(prompt, requirements, onEvent, providerId = null, modelName = null) {
