@@ -5,6 +5,7 @@ import Library from './pages/Library'
 import Reader from './pages/Reader'
 import Network from './pages/Network'
 import History from './pages/History'
+import useStore from './store'
 import { useState, useRef, useEffect } from 'react'
 
 const UI_LANGUAGES = [
@@ -194,6 +195,12 @@ function NavBar() {
 }
 
 function App() {
+  const loadActiveModel = useStore((s) => s.loadActiveModel)
+
+  useEffect(() => {
+    loadActiveModel()
+  }, [])
+
   return (
     <Router>
       <I18nProvider>

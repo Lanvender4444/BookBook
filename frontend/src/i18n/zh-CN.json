@@ -28,7 +28,10 @@
     "preparing": "准备开始...",
     "simple": "简单",
     "medium": "中等",
-    "hard": "困难"
+    "hard": "困难",
+    "changeModel": "切换模型",
+    "noModel": "尚未配置 AI 模型",
+    "configureModel": "去配置"
   },
   "history": {
     "title": "生成历史",
@@ -149,5 +152,38 @@
   "modal": {
     "confirm": "确定",
     "cancel": "取消"
+  },
+  "settings": {
+    "title": "AI 模型设置",
+    "loading": "加载中...",
+    "searchProvider": "搜索服务商...",
+    "configured": "已配置",
+    "active": "使用中",
+    "connect": "连接",
+    "edit": "编辑",
+    "remove": "移除",
+    "configure": "配置",
+    "apiKeyPlaceholder": "输入 API Key...",
+    "getApiKey": "获取 API Key",
+    "baseUrlHint": "留空使用默认地址",
+    "models": "可用模型",
+    "addModelPlaceholder": "输入模型名称",
+    "add": "添加",
+    "testConnection": "测试连接",
+    "testing": "测试中...",
+    "testSuccess": "连接成功！",
+    "testFailed": "连接失败",
+    "availableModels": "可用模型",
+    "availableProviders": "可用服务商",
+    "save": "保存",
+    "saving": "保存中...",
+    "currentModel": "当前模型",
+    "deleteProvider": "移除服务商",
+    "deleteConfirm": "确定要移除此服务商的配置吗？移除后需要重新输入 API Key。",
+    "migrateEnv": "导入 .env",
+    "migrating": "导入中...",
+    "migrateSuccess": "成功从环境变量导入 {count} 个服务商配置",
+    "migrateNoKeys": "未发现可导入的环境变量配置",
+    "noResults": "无匹配结果"
   }
 }

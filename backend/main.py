@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
 from routers import books, generate, p2p
+from routers import providers
 from routers.p2p import p2p_service
 from services.identity import generate_user_id
 
@@ -16,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
 async def startup():
     init_db()
@@ -26,18 +28,31 @@ async def startup():
     except Exception as e:
         print(f"[P2P] Failed to start TCP server: {e}")
 
+
 @app.on_event("shutdown")
 async def shutdown():
     await p2p_service.stop()
+
 
 @app.get("/api/identity")
 def get_identity():
     return {"user_id": generate_user_id()}
 
+
+@app.get("/api/active-model")
+def get_active_model():
+    from services.llm_service import get_active_provider_info
+
+    info = get_active_provider_info()
+    return info or {"active": None}
+
+
 app.include_router(books.router)
 app.include_router(generate.router)
 app.include_router(p2p.router)
+app.include_router(providers.router)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

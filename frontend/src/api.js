@@ -20,6 +20,11 @@ export const api = {
     return response.json()
   },
 
+  async generateStream(prompt, requirements, onEvent, providerId = null, modelName = null) {
+    const body = { prompt, requirements }
+    if (providerId) body.provider_id = providerId
+    if (modelName) body.model_name = modelName
+
   async openBook(id, app = null) {
     const url = app
       ? `${API_BASE}/books/${id}/open?app=${encodeURIComponent(app)}`
@@ -32,7 +37,7 @@ export const api = {
     const response = await fetch(`${API_BASE}/generate/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, requirements })
+      body: JSON.stringify(body)
     })
 
     const reader = response.body.getReader()
@@ -76,5 +81,56 @@ export const api = {
   async getIdentity() {
     const response = await fetch(`${API_BASE}/identity`)
     return response.json()
-  }
+  },
+
+  async listProviders() {
+    const response = await fetch(`${API_BASE}/providers/list`)
+    return response.json()
+  },
+
+  async getProvider(providerId) {
+    const response = await fetch(`${API_BASE}/providers/${providerId}`)
+    return response.json()
+  },
+
+  async configureProvider(providerId, apiKey, baseUrl = null, models = null) {
+    const body = { provider_id: providerId, api_key: apiKey }
+    if (baseUrl) body.base_url = baseUrl
+    if (models) body.models = models
+    const response = await fetch(`${API_BASE}/providers/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    return response.json()
+  },
+
+  async deleteProvider(providerId) {
+    const response = await fetch(`${API_BASE}/providers/${providerId}`, { method: 'DELETE' })
+    return response.json()
+  },
+
+  async setActiveModel(providerId, modelName) {
+    const response = await fetch(`${API_BASE}/providers/active`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider_id: providerId, model_name: modelName })
+    })
+    return response.json()
+  },
+
+  async getActiveModel() {
+    const response = await fetch(`${API_BASE}/providers/active/detail`)
+    return response.json()
+  },
+
+  async testProvider(providerId) {
+    const response = await fetch(`${API_BASE}/providers/${providerId}/test`, { method: 'POST' })
+    return response.json()
+  },
+
+  async migrateEnvKeys() {
+    const response = await fetch(`${API_BASE}/providers/migrate-env`, { method: 'POST' })
+    return response.json()
+  },
 }
