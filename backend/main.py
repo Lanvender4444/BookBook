@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import json
 from pathlib import Path
@@ -9,8 +10,12 @@ from routers import providers
 from routers.p2p import p2p_service
 from services.identity import generate_user_id
 
-# 加载根目录配置
-_project_root = Path(__file__).parent.parent
+def get_project_root():
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
+
+_project_root = get_project_root()
 _config_path = _project_root / "config.json"
 if _config_path.exists():
     with open(_config_path, "r", encoding="utf-8") as f:
@@ -18,7 +23,7 @@ if _config_path.exists():
 else:
     _config = {}
 
-BACKEND_PORT = int(_config.get("backend_port", 8000))
+BACKEND_PORT = int(_config.get("backend_port", 18140))
 FRONTEND_PORT = int(_config.get("frontend_port", 5173))
 P2P_PORT = int(_config.get("p2p_port", 47833))
 

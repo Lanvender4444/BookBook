@@ -280,13 +280,39 @@ async def reconnect_stream(history_id: int, db: Session = Depends(get_db)):
 
     async def event_generator():
         last_update_hash = None
+        no_task_count = 0
+        max_no_task_wait = 60
 
         try:
+            yield {
+                "event": "history_id",
+                "data": json.dumps({"history_id": history_id}),
+            }
+
+            if history.outline:
+                outline = history.outline
+                yield {
+                    "event": "progress",
+                    "data": json.dumps(
+                        {
+                            "type": "progress",
+                            "status": "running",
+                            "data": {
+                                "stage": "outline_done",
+                                "message": f"大纲: {outline.get('title', '')}",
+                                "outline": outline,
+                            },
+                        }
+                    ),
+                }
+                last_update_hash = "running:outline_done:0"
+
             while True:
                 status_info = task_status.get(history_id)
 
                 if not status_info:
-                    # 任务不在内存中，从数据库获取状态
+                    no_task_count += 1
+                    db.refresh(history)
                     if history.status == "completed":
                         yield {
                             "event": "done",
@@ -319,9 +345,26 @@ async def reconnect_stream(history_id: int, db: Session = Depends(get_db)):
                             ),
                         }
                         break
+                    elif no_task_count >= max_no_task_wait:
+                        yield {
+                            "event": "error",
+                            "data": json.dumps(
+                                {
+                                    "type": "error",
+                                    "status": "failed",
+                                    "data": {
+                                        "stage": "error",
+                                        "message": "任务状态丢失，请刷新页面重试",
+                                    },
+                                }
+                            ),
+                        }
+                        break
                     else:
                         await asyncio.sleep(0.5)
                         continue
+                else:
+                    no_task_count = 0
 
                 current_status = status_info["status"]
                 progress = status_info["progress"]

@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import platform
 from pathlib import Path
@@ -6,8 +7,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# 加载根目录配置
-_project_root = Path(__file__).parent.parent
+def get_project_root():
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
+
+_project_root = get_project_root()
 _config_path = _project_root / "config.json"
 if _config_path.exists():
     with open(_config_path, "r", encoding="utf-8") as f:

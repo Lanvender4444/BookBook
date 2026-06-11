@@ -1,8 +1,15 @@
 import json
+import re
+import time
+import asyncio
 import httpx
 from database import SessionLocal
 from models import ProviderConfig, ActiveModel
 from config import PROVIDERS
+
+LLM_TIMEOUT = httpx.Timeout(600.0, connect=30.0)
+LLM_RETRIES = 3
+LLM_RETRY_BACKOFF = 2.0
 
 
 def _decrypt_api_key(encrypted: str) -> str:
@@ -44,24 +51,30 @@ class AnthropicService(BaseLLMService):
     async def generate(
         self, system_prompt: str, user_message: str, max_tokens: int = 4096
     ) -> str:
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        return response.content[0].text
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+            return response.content[0].text
+        except Exception as e:
+            raise ValueError(f"Anthropic API error: {e}")
 
     def generate_sync(
         self, system_prompt: str, user_message: str, max_tokens: int = 4096
     ) -> str:
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        return response.content[0].text
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
+            return response.content[0].text
+        except Exception as e:
+            raise ValueError(f"Anthropic API error: {e}")
 
 
 class OpenAICompatibleService(BaseLLMService):
@@ -70,51 +83,80 @@ class OpenAICompatibleService(BaseLLMService):
         self.base_url = base_url.rstrip("/")
         self.model = model
 
+    def _handle_response(self, result: dict, response_status_code: int) -> str:
+        if "error" in result:
+            err = result["error"]
+            err_msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+            raise ValueError(f"API error ({response_status_code}): {err_msg}")
+        if "choices" not in result:
+            raise ValueError(f"API 响应格式异常 (status={response_status_code}): {json.dumps(result, ensure_ascii=False)[:500]}")
+        content = result["choices"][0]["message"]["content"]
+        if not content:
+            finish_reason = result["choices"][0].get("finish_reason", "")
+            raise ValueError(f"API 返回空内容 (finish_reason={finish_reason})")
+        return content
+
     async def generate(
         self, system_prompt: str, user_message: str, max_tokens: int = 4096
     ) -> str:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message},
-                    ],
-                    "max_tokens": max_tokens,
-                    "temperature": 0.7,
-                },
-            )
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
+        last_error = None
+        for attempt in range(LLM_RETRIES):
+            try:
+                async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.model,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_message},
+                            ],
+                            "max_tokens": max_tokens,
+                            "temperature": 0.7,
+                        },
+                    )
+                    result = response.json()
+                    return self._handle_response(result, response.status_code)
+            except (httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ConnectError) as e:
+                last_error = e
+                if attempt < LLM_RETRIES - 1:
+                    await asyncio.sleep(LLM_RETRY_BACKOFF * (2 ** attempt))
+        raise ValueError(f"LLM API 请求失败（重试 {LLM_RETRIES} 次后）: {last_error}")
 
     def generate_sync(
         self, system_prompt: str, user_message: str, max_tokens: int = 4096
     ) -> str:
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message},
-                    ],
-                    "max_tokens": max_tokens,
-                    "temperature": 0.7,
-                },
-            )
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
+        last_error = None
+        for attempt in range(LLM_RETRIES):
+            try:
+                with httpx.Client(timeout=LLM_TIMEOUT) as client:
+                    response = client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.model,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_message},
+                            ],
+                            "max_tokens": max_tokens,
+                            "temperature": 0.7,
+                        },
+                    )
+                    result = response.json()
+                    return self._handle_response(result, response.status_code)
+            except (httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ConnectError) as e:
+                last_error = e
+                if attempt < LLM_RETRIES - 1:
+                    time.sleep(LLM_RETRY_BACKOFF * (2 ** attempt))
+        raise ValueError(f"LLM API 请求失败（重试 {LLM_RETRIES} 次后）: {last_error}")
 
 
 class GeminiService(BaseLLMService):
@@ -130,12 +172,15 @@ class GeminiService(BaseLLMService):
         from google.genai import types
 
         full_prompt = f"[System]: {system_prompt}\n\n[User]: {user_message}"
-        response = await self.client.aio.models.generate_content(
-            model=self.model,
-            contents=full_prompt,
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
-        )
-        return response.text
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+            )
+            return response.text
+        except Exception as e:
+            raise ValueError(f"Gemini API error: {e}")
 
     def generate_sync(
         self, system_prompt: str, user_message: str, max_tokens: int = 4096
@@ -143,12 +188,15 @@ class GeminiService(BaseLLMService):
         from google.genai import types
 
         full_prompt = f"[System]: {system_prompt}\n\n[User]: {user_message}"
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=full_prompt,
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens),
-        )
-        return response.text
+        try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(max_output_tokens=max_tokens),
+            )
+            return response.text
+        except Exception as e:
+            raise ValueError(f"Gemini API error: {e}")
 
 
 def get_llm_service(provider_id: str = None, model_name: str = None) -> BaseLLMService:
@@ -384,21 +432,35 @@ def generate_chapter_sync(
 ) -> str:
     service = get_llm_service(provider_id, model_name)
 
-    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章。
+    total_chapters = len(outline.get("chapters", []))
+    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
 书籍简介：{outline["description"]}
 
-要求：
-- 内容详实，逻辑清晰
-- 语言流畅，符合目标读者水平
-- 字数控制在合理范围内
-- 保持与书籍标题相同的语言"""
+你必须使用以下 Markdown 标题层级来组织章节内容：
+- ### 三级标题：用于章节内的主要小节（必须有）
+- #### 四级标题：用于小节内的细分（可选）
+
+严禁使用一级标题(#)和二级标题(##)，因为它们已被书名和章名占用。
+每个章节必须至少包含一个 ### 三级标题。
+
+示例格式：
+### 1.1 小节标题
+正文内容...
+
+#### 1.1.1 细分标题
+正文内容...
+
+### 1.2 小节标题
+正文内容..."""
 
     user_message = f"""章节标题：{chapter["title"]}
 章节概要：{chapter["summary"]}
 
-请撰写完整的章节内容。"""
+请撰写完整的章节内容，使用 ### 和 #### 组织内容结构。"""
 
     content = service.generate_sync(system_prompt, user_message)
+    content = re.sub(r'^#{1,2}\s+', '', content, flags=re.MULTILINE)
+    content = re.sub(r'^(#{5,6})\s+', lambda m: '####' + m.group(0)[len(m.group(1)):], content, flags=re.MULTILINE)
     return content
 
 
@@ -455,19 +517,33 @@ async def generate_chapter(
 ) -> str:
     service = get_llm_service(provider_id, model_name)
 
-    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章。
+    total_chapters = len(outline.get("chapters", []))
+    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
 书籍简介：{outline["description"]}
 
-要求：
-- 内容详实，逻辑清晰
-- 语言流畅，符合目标读者水平
-- 字数控制在合理范围内
-- 保持与书籍标题相同的语言"""
+你必须使用以下 Markdown 标题层级来组织章节内容：
+- ### 三级标题：用于章节内的主要小节（必须有）
+- #### 四级标题：用于小节内的细分（可选）
+
+严禁使用一级标题(#)和二级标题(##)，因为它们已被书名和章名占用。
+每个章节必须至少包含一个 ### 三级标题。
+
+示例格式：
+### 1.1 小节标题
+正文内容...
+
+#### 1.1.1 细分标题
+正文内容...
+
+### 1.2 小节标题
+正文内容..."""
 
     user_message = f"""章节标题：{chapter["title"]}
 章节概要：{chapter["summary"]}
 
-请撰写完整的章节内容。"""
+请撰写完整的章节内容，使用 ### 和 #### 组织内容结构。"""
 
     content = await service.generate(system_prompt, user_message)
+    content = re.sub(r'^#{1,2}\s+', '', content, flags=re.MULTILINE)
+    content = re.sub(r'^(#{5,6})\s+', lambda m: '####' + m.group(0)[len(m.group(1)):], content, flags=re.MULTILINE)
     return content

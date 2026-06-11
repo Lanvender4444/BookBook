@@ -8,6 +8,7 @@ import History from './pages/History'
 import useStore from './store'
 import { useState, useRef, useEffect } from 'react'
 import TypewriterHeading from './components/TypewriterHeading'
+import { useBackendReady } from './hooks/useBackendReady'
 
 const UI_LANGUAGES = [
   { value: "zh-CN", label: "中文（简体）" },
@@ -197,10 +198,22 @@ function NavBar() {
 
 function App() {
   const loadActiveModel = useStore((s) => s.loadActiveModel)
+  const ready = useBackendReady()
 
   useEffect(() => {
-    loadActiveModel()
-  }, [])
+    if (ready) loadActiveModel()
+  }, [ready])
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">Starting BookBook...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Router>
