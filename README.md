@@ -39,9 +39,9 @@ uv run python -c "from database import init_db; init_db()"
 cd backend
 uv run main.py
 ```
-后端将运行在 http://localhost:8000
+后端将运行在 http://localhost:18140
 
-API 文档地址： http://localhost:8000/docs
+API 文档地址： http://localhost:18140/docs
 
 ### 安装前端依赖
 ```bash
@@ -55,7 +55,7 @@ npm install
 cd frontend
 npm run dev
 ```
-前端将运行在 http://localhost:5173
+前端将运行在 http://localhost:17983
 
 ---
 
@@ -125,8 +125,8 @@ BookBook 支持以下语言的界面显示：
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| 前端 (Vite) | 5173 | React 开发服务器 |
-| 后端 (FastAPI) | 8000 | API 服务 |
+| 前端 (Vite) | 17983 | React 开发服务器 |
+| 后端 (FastAPI) | 18140 | API 服务 |
 | P2P 广播 (UDP) | 47832 | 局域网节点发现 |
 | P2P 书籍同步 (TCP) | 47833 | 书籍数据传输 |
 
