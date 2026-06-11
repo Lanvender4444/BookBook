@@ -40,6 +40,9 @@ function Generate() {
   useEffect(() => {
     return () => {
       isMountedRef.current = false
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
     }
   }, [])
 
@@ -58,19 +61,17 @@ function Generate() {
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
     
-    if (isMountedRef.current) {
-      setGenerating(true)
-      generatingRef.current = true
-      setHistoryId(taskId)
-      setStatusMessage(t('generate.reconnecting'))
-    }
+    setGenerating(true)
+    generatingRef.current = true
+    setHistoryId(taskId)
+    setStatusMessage(t('generate.reconnecting'))
     
     try {
       const response = await fetch(`/api/generate/stream/${taskId}`, { signal })
       await processSSEStream(response, signal)
     } catch (error) {
       if (error.name !== 'AbortError') {
-        if (isMountedRef.current) setStatusMessage(t('generate.reconnectFailed'))
+        setStatusMessage(t('generate.reconnectFailed'))
       }
       if (isMountedRef.current) {
         setGenerating(false)
@@ -100,7 +101,7 @@ function Generate() {
             const data = JSON.parse(jsonStr)
             
             if (data.history_id) {
-              if (isMountedRef.current) setHistoryId(data.history_id)
+              setHistoryId(data.history_id)
             } else if (data.type === 'progress') {
               handleProgressEvent(data.data)
             } else if (data.type === 'done') {
@@ -115,7 +116,6 @@ function Generate() {
   }
 
   const handleProgressEvent = (data) => {
-    if (!isMountedRef.current) return
     setStatusMessage(data.message || '')
     
     if (data.stage === 'outline' || data.stage === 'outline_done') {
@@ -141,13 +141,12 @@ function Generate() {
   }
 
   const handleDoneEvent = (data) => {
-    if (isMountedRef.current) {
-      setGenerating(false)
-      generatingRef.current = false
-      setStatusMessage(t('generate.completed'))
-    }
+    setGenerating(false)
+    generatingRef.current = false
+    setStatusMessage(t('generate.completed'))
     if (data.book_id) {
       const title = data.book_title || outline?.title || '未命名电子书'
+      // 发送系统级右下角通知，无论当前在浏览什么页面都会显示
       sendSystemNotification(
         '电子书制作完成',
         `《${title}》已生成完毕，点击查看`,
@@ -160,11 +159,9 @@ function Generate() {
   }
 
   const handleErrorEvent = (data) => {
-    if (isMountedRef.current) {
-      setGenerating(false)
-      generatingRef.current = false
-      setStatusMessage(`${t('generate.error')}: ${data.message}`)
-    }
+    setGenerating(false)
+    generatingRef.current = false
+    setStatusMessage(`${t('generate.error')}: ${data.message}`)
   }
 
   const handleGenerate = async () => {

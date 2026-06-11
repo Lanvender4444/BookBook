@@ -15,6 +15,7 @@ if (fs.existsSync(configPath)) {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  base: mode === 'tauri' ? '/' : '/',
   define: {
     __BACKEND_PORT__: JSON.stringify(appConfig.backend_port || 8000),
     __P2P_PORT__: JSON.stringify(appConfig.p2p_port || 47833),
@@ -26,7 +27,15 @@ export default defineConfig(({ mode }) => ({
       : {
           '/api': {
             target: `http://localhost:${appConfig.backend_port || 8000}`,
-            changeOrigin: true
+            changeOrigin: true,
+            configure: (proxy) => {
+              proxy.on('proxyRes', (proxyRes) => {
+                if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+                  proxyRes.headers['cache-control'] = 'no-cache'
+                  proxyRes.headers['x-accel-buffering'] = 'no'
+                }
+              })
+            }
           }
         }
   }
