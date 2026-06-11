@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import asyncio
 import httpx
@@ -431,21 +432,35 @@ def generate_chapter_sync(
 ) -> str:
     service = get_llm_service(provider_id, model_name)
 
-    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章。
+    total_chapters = len(outline.get("chapters", []))
+    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
 书籍简介：{outline["description"]}
 
-要求：
-- 内容详实，逻辑清晰
-- 语言流畅，符合目标读者水平
-- 字数控制在合理范围内
-- 保持与书籍标题相同的语言"""
+你必须使用以下 Markdown 标题层级来组织章节内容：
+- ### 三级标题：用于章节内的主要小节（必须有）
+- #### 四级标题：用于小节内的细分（可选）
+
+严禁使用一级标题(#)和二级标题(##)，因为它们已被书名和章名占用。
+每个章节必须至少包含一个 ### 三级标题。
+
+示例格式：
+### 1.1 小节标题
+正文内容...
+
+#### 1.1.1 细分标题
+正文内容...
+
+### 1.2 小节标题
+正文内容..."""
 
     user_message = f"""章节标题：{chapter["title"]}
 章节概要：{chapter["summary"]}
 
-请撰写完整的章节内容。"""
+请撰写完整的章节内容，使用 ### 和 #### 组织内容结构。"""
 
     content = service.generate_sync(system_prompt, user_message)
+    content = re.sub(r'^#{1,2}\s+', '', content, flags=re.MULTILINE)
+    content = re.sub(r'^(#{5,6})\s+', lambda m: '####' + m.group(0)[len(m.group(1)):], content, flags=re.MULTILINE)
     return content
 
 
@@ -502,19 +517,33 @@ async def generate_chapter(
 ) -> str:
     service = get_llm_service(provider_id, model_name)
 
-    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章。
+    total_chapters = len(outline.get("chapters", []))
+    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
 书籍简介：{outline["description"]}
 
-要求：
-- 内容详实，逻辑清晰
-- 语言流畅，符合目标读者水平
-- 字数控制在合理范围内
-- 保持与书籍标题相同的语言"""
+你必须使用以下 Markdown 标题层级来组织章节内容：
+- ### 三级标题：用于章节内的主要小节（必须有）
+- #### 四级标题：用于小节内的细分（可选）
+
+严禁使用一级标题(#)和二级标题(##)，因为它们已被书名和章名占用。
+每个章节必须至少包含一个 ### 三级标题。
+
+示例格式：
+### 1.1 小节标题
+正文内容...
+
+#### 1.1.1 细分标题
+正文内容...
+
+### 1.2 小节标题
+正文内容..."""
 
     user_message = f"""章节标题：{chapter["title"]}
 章节概要：{chapter["summary"]}
 
-请撰写完整的章节内容。"""
+请撰写完整的章节内容，使用 ### 和 #### 组织内容结构。"""
 
     content = await service.generate(system_prompt, user_message)
+    content = re.sub(r'^#{1,2}\s+', '', content, flags=re.MULTILINE)
+    content = re.sub(r'^(#{5,6})\s+', lambda m: '####' + m.group(0)[len(m.group(1)):], content, flags=re.MULTILINE)
     return content
