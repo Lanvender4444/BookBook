@@ -15,6 +15,10 @@ if (fs.existsSync(configPath)) {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  define: {
+    __BACKEND_PORT__: JSON.stringify(appConfig.backend_port || 8000),
+    __P2P_PORT__: JSON.stringify(appConfig.p2p_port || 47833),
+  },
   server: {
     port: appConfig.frontend_port || 5173,
     proxy: mode === 'tauri'

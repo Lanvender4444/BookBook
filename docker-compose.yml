@@ -1,10 +1,13 @@
 version: '3.8'
 
+# Port mappings below should match config.json (backend_port, frontend_port, p2p_port).
+# If you change ports in config.json, update the mappings accordingly.
+
 services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
     volumes:
       - ./data:/app/data
       - ./backend/.env:/app/.env
@@ -14,8 +17,8 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:${FRONTEND_PORT:-5173}"
     depends_on:
       - backend
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:${BACKEND_PORT:-8000}
