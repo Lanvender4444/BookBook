@@ -1,7 +1,7 @@
 let API_BASE = (() => {
   const isTauri = typeof window !== 'undefined' && !!(window.__TAURI_INTERNALS__)
   if (isTauri) {
-    const port = window.__BOOKBOOK_BACKEND_PORT__ || 8000
+    const port = window.__BOOKBOOK_BACKEND_PORT__ || __BACKEND_PORT__
     return `http://localhost:${port}/api`
   }
   return '/api'

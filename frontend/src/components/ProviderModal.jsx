@@ -193,7 +193,7 @@ export default function ProviderModal({ open, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()} ref={modalRef}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-[92vw] sm:max-w-3xl lg:max-w-4xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()} ref={modalRef}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">{t('settings.title')}</h2>

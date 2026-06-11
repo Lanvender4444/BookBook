@@ -8,15 +8,16 @@ function Network() {
   const [shareTokens, setShareTokens] = useState([])
   const [shareForm, setShareForm] = useState({ book_id: '', expires_hours: 24 })
   const [books, setBooks] = useState([])
-  const [connectForm, setConnectForm] = useState({ host: '', port: 47833 })
+  const DEFAULT_P2P_PORT = typeof __P2P_PORT__ !== 'undefined' ? __P2P_PORT__ : (typeof window !== 'undefined' && window.__BOOKBOOK_P2P_PORT__) || 47833
+  const [connectForm, setConnectForm] = useState({ host: '', port: DEFAULT_P2P_PORT })
   const [peerBooks, setPeerBooks] = useState([])
   const [connecting, setConnecting] = useState(false)
-  const [redeemForm, setRedeemForm] = useState({ token: '', host: '', local_host: '', port: 47833 })
+  const [redeemForm, setRedeemForm] = useState({ token: '', host: '', local_host: '', port: DEFAULT_P2P_PORT })
   const [redeeming, setRedeeming] = useState(false)
   const [downloadModal, setDownloadModal] = useState({ open: false, peerHost: '', bookId: '' })
   const [message, setMessage] = useState('')
   const [copiedToken, setCopiedToken] = useState('')
-  const [myInfo, setMyInfo] = useState({ user_id: '', host: '', port: 47833 })
+  const [myInfo, setMyInfo] = useState({ user_id: '', host: '', port: DEFAULT_P2P_PORT })
   const [loadingShares, setLoadingShares] = useState(false)
 
   useEffect(() => {
@@ -452,7 +453,7 @@ function Network() {
                 <input
                   type="number"
                   value={connectForm.port}
-                  onChange={(e) => setConnectForm({...connectForm, port: parseInt(e.target.value) || 47833})}
+                  onChange={(e) => setConnectForm({...connectForm, port: parseInt(e.target.value) || DEFAULT_P2P_PORT})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
@@ -513,7 +514,7 @@ function Network() {
 
       {/* Redeem Tab */}
       {activeTab === 'redeem' && (
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-[90vw] sm:max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">{t('network.redeemShare')}</h2>
             <p className="text-sm text-gray-600 mb-4">
@@ -565,7 +566,7 @@ function Network() {
                 <input
                   type="number"
                   value={redeemForm.port}
-                  onChange={(e) => setRedeemForm({...redeemForm, port: parseInt(e.target.value) || 47833})}
+                  onChange={(e) => setRedeemForm({...redeemForm, port: parseInt(e.target.value) || DEFAULT_P2P_PORT})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
               </div>
