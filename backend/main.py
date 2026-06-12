@@ -36,6 +36,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
 from routers import books, generate, p2p
 from routers import providers
+from routers import knowledge
 from routers.p2p import p2p_service
 from services.identity import generate_user_id
 
@@ -65,6 +66,13 @@ async def startup():
         print(f"[DB] init_db() FAILED: {e}")
         import traceback
         traceback.print_exc()
+    # 种子化内置风格库/写作指导（失败不阻塞启动）
+    try:
+        from builtin_library import seed_builtins
+        seed_builtins()
+        print("[Builtin] seed_builtins() OK")
+    except Exception as e:
+        print(f"[Builtin] seed failed: {e}")
     try:
         asyncio.create_task(p2p_service.start())
         print(f"[P2P] TCP server started on port {P2P_PORT}")
@@ -103,6 +111,7 @@ app.include_router(books.router)
 app.include_router(generate.router)
 app.include_router(p2p.router)
 app.include_router(providers.router)
+app.include_router(knowledge.router)
 
 if __name__ == "__main__":
     import uvicorn

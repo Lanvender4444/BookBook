@@ -379,17 +379,53 @@ def _get_language_name(code: str) -> str:
     return LANGUAGE_NAMES.get(code, "简体中文")
 
 
-def generate_outline_sync(
-    prompt: str, requirements: dict, provider_id: str = None, model_name: str = None
-) -> dict:
-    service = get_llm_service(provider_id, model_name)
+def _language_rule(lang_name: str) -> str:
+    return f"""【语言铁律 / LANGUAGE RULE】
+本书的写作语言是：{lang_name}。
+1. 从书名、章节标题到每一句正文，全部必须使用 {lang_name}，任何情况下都不得混入其他语言的句子或段落。
+2. 即使下方的参考资料、风格样本或续写原文使用了其他语言，你也必须将其中的信息用 {lang_name} 重新表达。
+3. 唯一例外：如果本书是语言教学/学习类书籍，允许出现"所教授的目标语言"的例句和词汇，但所有讲解、说明文字仍必须使用 {lang_name}，形成 {lang_name} + 目标语言的对照。
+4. 代码、数学公式、专有名词（人名、品牌等）可保留原文。
+违反语言铁律是最严重的错误。"""
 
+
+def _compose_context(card_context: str, extra_requirements: str) -> str:
+    """组装写作卡上下文（RAG 检索结果 + 额外需求），拼入 system prompt。"""
+    parts = []
+    if card_context:
+        parts.append(
+            "# 写作卡参考材料\n"
+            "以下材料按用途分类。「写作指导」约束写法，「风格参考」需模仿其文风（不要照抄内容），"
+            "「资料库」提供事实依据（优先采用），「续写原文」是必须自然衔接续写的原文上下文。\n\n"
+            + card_context
+        )
+    if extra_requirements:
+        parts.append(f"# 额外需求（必须满足）\n{extra_requirements}")
+    return "\n\n".join(parts)
+
+
+def _build_outline_prompts(
+    prompt: str,
+    requirements: dict,
+    card_context: str = "",
+    extra_requirements: str = "",
+    has_continuation: bool = False,
+) -> tuple[str, str]:
     lang_code = requirements.get("language", "zh-CN")
     lang_name = _get_language_name(lang_code)
 
+    continuation_note = (
+        "\n注意：本书是【续写】任务，大纲必须从「续写原文」结尾处自然延续其情节、人物与设定，不要重新开始故事。"
+        if has_continuation
+        else ""
+    )
+    context = _compose_context(card_context, extra_requirements)
+
     system_prompt = f"""你是一个专业的电子书大纲生成器。根据用户需求和生成要求，生成结构化的JSON格式大纲。
 
-重要：书籍内容必须使用 {lang_name} 撰写，所有标题和描述都必须是 {lang_name}。
+{_language_rule(lang_name)}
+{continuation_note}
+{context}
 
 返回格式（必须严格遵循JSON格式，不要包含其他文字）：
 {{
@@ -411,8 +447,61 @@ def generate_outline_sync(
 
 请生成详细的大纲，只返回JSON格式内容。"""
 
-    content = service.generate_sync(system_prompt, user_message)
+    return system_prompt, user_message
 
+
+def _build_chapter_prompts(
+    outline: dict,
+    chapter: dict,
+    chapter_index: int,
+    language: str = "zh-CN",
+    card_context: str = "",
+    extra_requirements: str = "",
+    has_continuation: bool = False,
+) -> tuple[str, str]:
+    lang_name = _get_language_name(language)
+    total_chapters = len(outline.get("chapters", []))
+
+    continuation_note = (
+        "\n注意：本书是【续写】任务，内容必须延续「续写原文」的情节、人物、设定与文风。"
+        if has_continuation
+        else ""
+    )
+    context = _compose_context(card_context, extra_requirements)
+
+    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
+书籍简介：{outline["description"]}
+
+{_language_rule(lang_name)}
+{continuation_note}
+{context}
+
+你必须使用以下 Markdown 标题层级来组织章节内容：
+- ### 三级标题：用于章节内的主要小节（必须有）
+- #### 四级标题：用于小节内的细分（可选）
+
+严禁使用一级标题(#)和二级标题(##)，因为它们已被书名和章名占用。
+每个章节必须至少包含一个 ### 三级标题。
+
+示例格式：
+### 1.1 小节标题
+正文内容...
+
+#### 1.1.1 细分标题
+正文内容...
+
+### 1.2 小节标题
+正文内容..."""
+
+    user_message = f"""章节标题：{chapter["title"]}
+章节概要：{chapter["summary"]}
+
+请用 {lang_name} 撰写完整的章节内容，使用 ### 和 #### 组织内容结构。"""
+
+    return system_prompt, user_message
+
+
+def _parse_outline_json(content: str) -> dict:
     try:
         json_start = content.find("{")
         json_end = content.rfind("}") + 1
@@ -421,6 +510,29 @@ def generate_outline_sync(
         return json.loads(content)
     except json.JSONDecodeError:
         raise ValueError(f"Failed to parse outline JSON: {content[:200]}...")
+
+
+def _clean_chapter_markdown(content: str) -> str:
+    content = re.sub(r'^#{1,2}\s+', '', content, flags=re.MULTILINE)
+    content = re.sub(r'^(#{5,6})\s+', lambda m: '####' + m.group(0)[len(m.group(1)):], content, flags=re.MULTILINE)
+    return content
+
+
+def generate_outline_sync(
+    prompt: str,
+    requirements: dict,
+    provider_id: str = None,
+    model_name: str = None,
+    card_context: str = "",
+    extra_requirements: str = "",
+    has_continuation: bool = False,
+) -> dict:
+    service = get_llm_service(provider_id, model_name)
+    system_prompt, user_message = _build_outline_prompts(
+        prompt, requirements, card_context, extra_requirements, has_continuation
+    )
+    content = service.generate_sync(system_prompt, user_message)
+    return _parse_outline_json(content)
 
 
 def generate_chapter_sync(
@@ -429,83 +541,34 @@ def generate_chapter_sync(
     chapter_index: int,
     provider_id: str = None,
     model_name: str = None,
+    language: str = "zh-CN",
+    card_context: str = "",
+    extra_requirements: str = "",
+    has_continuation: bool = False,
 ) -> str:
     service = get_llm_service(provider_id, model_name)
-
-    total_chapters = len(outline.get("chapters", []))
-    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
-书籍简介：{outline["description"]}
-
-你必须使用以下 Markdown 标题层级来组织章节内容：
-- ### 三级标题：用于章节内的主要小节（必须有）
-- #### 四级标题：用于小节内的细分（可选）
-
-严禁使用一级标题(#)和二级标题(##)，因为它们已被书名和章名占用。
-每个章节必须至少包含一个 ### 三级标题。
-
-示例格式：
-### 1.1 小节标题
-正文内容...
-
-#### 1.1.1 细分标题
-正文内容...
-
-### 1.2 小节标题
-正文内容..."""
-
-    user_message = f"""章节标题：{chapter["title"]}
-章节概要：{chapter["summary"]}
-
-请撰写完整的章节内容，使用 ### 和 #### 组织内容结构。"""
-
+    system_prompt, user_message = _build_chapter_prompts(
+        outline, chapter, chapter_index, language, card_context, extra_requirements, has_continuation
+    )
     content = service.generate_sync(system_prompt, user_message)
-    content = re.sub(r'^#{1,2}\s+', '', content, flags=re.MULTILINE)
-    content = re.sub(r'^(#{5,6})\s+', lambda m: '####' + m.group(0)[len(m.group(1)):], content, flags=re.MULTILINE)
-    return content
+    return _clean_chapter_markdown(content)
 
 
 async def generate_outline(
-    prompt: str, requirements: dict, provider_id: str = None, model_name: str = None
+    prompt: str,
+    requirements: dict,
+    provider_id: str = None,
+    model_name: str = None,
+    card_context: str = "",
+    extra_requirements: str = "",
+    has_continuation: bool = False,
 ) -> dict:
     service = get_llm_service(provider_id, model_name)
-
-    lang_code = requirements.get("language", "zh-CN")
-    lang_name = _get_language_name(lang_code)
-
-    system_prompt = f"""你是一个专业的电子书大纲生成器。根据用户需求和生成要求，生成结构化的JSON格式大纲。
-
-重要：书籍内容必须使用 {lang_name} 撰写，所有标题和描述都必须是 {lang_name}。
-
-返回格式（必须严格遵循JSON格式，不要包含其他文字）：
-{{
-    "title": "书籍标题（{lang_name}）",
-    "description": "书籍简介（{lang_name}）",
-    "chapters": [
-        {{"title": "章节标题（{lang_name}）", "summary": "章节概要（{lang_name}）"}}
-    ]
-}}"""
-
-    user_message = f"""用户需求：{prompt}
-
-生成要求：
-- 难易度：{requirements.get("difficulty", "中等")}
-- 目标字数：{requirements.get("word_count", "5000")}字
-- 章节数量：{requirements.get("chapter_count", "5-8")}
-- 风格：{requirements.get("style", "科普向")}
-- 语言：{lang_name}
-
-请生成详细的大纲，只返回JSON格式内容。"""
-
+    system_prompt, user_message = _build_outline_prompts(
+        prompt, requirements, card_context, extra_requirements, has_continuation
+    )
     content = await service.generate(system_prompt, user_message)
-
-    try:
-        json_start = content.find("{")
-        json_end = content.rfind("}") + 1
-        if json_start != -1 and json_end > json_start:
-            return json.loads(content[json_start:json_end])
-        return json.loads(content)
-    except json.JSONDecodeError:
-        raise ValueError(f"Failed to parse outline JSON: {content[:200]}...")
+    return _parse_outline_json(content)
 
 
 async def generate_chapter(
@@ -514,36 +577,14 @@ async def generate_chapter(
     chapter_index: int,
     provider_id: str = None,
     model_name: str = None,
+    language: str = "zh-CN",
+    card_context: str = "",
+    extra_requirements: str = "",
+    has_continuation: bool = False,
 ) -> str:
     service = get_llm_service(provider_id, model_name)
-
-    total_chapters = len(outline.get("chapters", []))
-    system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
-书籍简介：{outline["description"]}
-
-你必须使用以下 Markdown 标题层级来组织章节内容：
-- ### 三级标题：用于章节内的主要小节（必须有）
-- #### 四级标题：用于小节内的细分（可选）
-
-严禁使用一级标题(#)和二级标题(##)，因为它们已被书名和章名占用。
-每个章节必须至少包含一个 ### 三级标题。
-
-示例格式：
-### 1.1 小节标题
-正文内容...
-
-#### 1.1.1 细分标题
-正文内容...
-
-### 1.2 小节标题
-正文内容..."""
-
-    user_message = f"""章节标题：{chapter["title"]}
-章节概要：{chapter["summary"]}
-
-请撰写完整的章节内容，使用 ### 和 #### 组织内容结构。"""
-
+    system_prompt, user_message = _build_chapter_prompts(
+        outline, chapter, chapter_index, language, card_context, extra_requirements, has_continuation
+    )
     content = await service.generate(system_prompt, user_message)
-    content = re.sub(r'^#{1,2}\s+', '', content, flags=re.MULTILINE)
-    content = re.sub(r'^(#{5,6})\s+', lambda m: '####' + m.group(0)[len(m.group(1)):], content, flags=re.MULTILINE)
-    return content
+    return _clean_chapter_markdown(content)
