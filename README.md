@@ -135,3 +135,30 @@ BookBook 支持以下语言的界面显示：
 
 **防火墙设置：**
 如需使用 P2P 功能，请确保端口 47832（UDP）和 47833（TCP）在局域网内开放。
+
+----
+
+![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8D8?logo=tauri&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-1.77+-000000?logo=rust&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-06B6D4?logo=tailwindcss&logoColor=white)
+![Zustand](https://img.shields.io/badge/Zustand-4.5-433E38?logo=react&logoColor=white)
+![React Router](https://img.shields.io/badge/React_Router-6-CA4245?logo=reactrouter&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688?logo=fastapi&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?logo=sqlalchemy&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
+![Uvicorn](https://img.shields.io/badge/Uvicorn-ASGI-499848?logo=gunicorn&logoColor=white)
+![PyInstaller](https://img.shields.io/badge/PyInstaller-6.0+-3776AB?logo=python&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude_API-Anthropic-D97757?logo=anthropic&logoColor=white)
+![Multi LLM](https://img.shields.io/badge/Multi--LLM-30+_providers-8A2BE2)
+![SSE](https://img.shields.io/badge/SSE-Streaming-FF6600)
+![P2P](https://img.shields.io/badge/P2P-LAN_Share-4CAF50)
+![WebView2](https://img.shields.io/badge/WebView2-Windows-0078D4?logo=windows&logoColor=white)
+![NSIS](https://img.shields.io/badge/Installer-NSIS-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+----
+
+Have a Great DAY! :-)
