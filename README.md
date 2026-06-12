@@ -151,7 +151,6 @@ BookBook 支持以下语言的界面显示：
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
 ![Uvicorn](https://img.shields.io/badge/Uvicorn-ASGI-499848?logo=gunicorn&logoColor=white)
 ![PyInstaller](https://img.shields.io/badge/PyInstaller-6.0+-3776AB?logo=python&logoColor=white)
-![Claude](https://img.shields.io/badge/Claude_API-Anthropic-D97757?logo=anthropic&logoColor=white)
 ![Multi LLM](https://img.shields.io/badge/Multi--LLM-30+_providers-8A2BE2)
 ![SSE](https://img.shields.io/badge/SSE-Streaming-FF6600)
 ![P2P](https://img.shields.io/badge/P2P-LAN_Share-4CAF50)
