@@ -1,7 +1,9 @@
 # BookBook 一键打包脚本
 # 用法: 在项目根目录执行  powershell -ExecutionPolicy Bypass -File build.ps1
-# 如果之前执行过开发版，需要手动停止后端进程
+
+# 如果之前执行过开发版，需要手动停止 后端进程
 # taskkill /F /IM backend.exe
+
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 
