@@ -28,7 +28,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "externalBin": [
       "binaries/backend"
     ],
@@ -39,8 +44,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../../config.json"
-    ]
+    "resources": {
+      "../../config.json": "config.json"
+    }
   }
 }

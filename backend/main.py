@@ -2,6 +2,23 @@ import sys
 import asyncio
 import json
 from pathlib import Path
+
+# --- PyInstaller --noconsole 加固 ---
+# windowed 模式下 sys.stdout/stderr 为 None，
+# 任何 print / uvicorn 日志写入都会导致进程崩溃。
+# frozen 时把输出重定向到 exe 同级目录的 backend.log。
+if getattr(sys, "frozen", False):
+    _log_file = Path(sys.executable).parent / "backend.log"
+    try:
+        _log_stream = open(_log_file, "a", encoding="utf-8", buffering=1)
+    except OSError:
+        import os
+        _log_stream = open(os.devnull, "w", encoding="utf-8")
+    if sys.stdout is None:
+        sys.stdout = _log_stream
+    if sys.stderr is None:
+        sys.stderr = _log_stream
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
@@ -84,4 +101,9 @@ app.include_router(providers.router)
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=BACKEND_PORT)
+    # 127.0.0.1 即可（仅供本机 Tauri 前端访问），避免防火墙弹窗；
+    # frozen 模式下关闭 uvicorn 默认日志配置，防止它向已失效的终端流写日志
+    _kwargs = {}
+    if getattr(sys, "frozen", False):
+        _kwargs["log_config"] = None  # 禁用 uvicorn 默认日志配置，防止写入失效的终端流
+    uvicorn.run(app, host="127.0.0.1", port=BACKEND_PORT, **_kwargs)
