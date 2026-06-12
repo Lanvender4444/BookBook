@@ -159,6 +159,9 @@ def run_generation_task(
                 "current_chapter": i,
                 "total_chapters": total_chapters,
                 "chapter_title": chapter.get("title", ""),
+                # 附带大纲：SSE 轮询可能错过转瞬即逝的 outline_done 事件，
+                # 每个章节事件都带上，保证前端任何时刻都能同步到大纲
+                "outline": outline,
             }
 
             # 写作卡：每章按「章节标题+概要」重新检索，上下文更精准

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import BookCover from './BookCover'
 
 function BookCard({ book, onDelete }) {
   const navigate = useNavigate()
@@ -26,8 +27,8 @@ function BookCard({ book, onDelete }) {
 
   return (
     <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
-      <div className="h-40 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-t-lg flex items-center justify-center">
-        <span className="text-white text-4xl">📖</span>
+      <div className="h-40 rounded-t-lg overflow-hidden">
+        <BookCover book={book} />
       </div>
       
       <div className="p-4">

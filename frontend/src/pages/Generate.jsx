@@ -136,12 +136,15 @@ function Generate() {
 
   const handleProgressEvent = (data) => {
     setStatusMessage(data.message || '')
-    
+
+    // 任意事件只要携带大纲就同步（outline_done 事件转瞬即逝，轮询可能错过）
+    if (data.outline) {
+      setOutline(data.outline)
+      setTotalChapters(data.outline.chapters?.length || 0)
+    }
+
     if (data.stage === 'outline' || data.stage === 'outline_done') {
-      if (data.outline) {
-        setOutline(data.outline)
-        setTotalChapters(data.outline.chapters?.length || 0)
-      }
+      // 大纲已在上方统一处理
     } else if (data.stage === 'chapter' || data.stage === 'chapter_done') {
       setCurrentChapter(data.current_chapter || 0)
       setTotalChapters(data.total_chapters || 0)

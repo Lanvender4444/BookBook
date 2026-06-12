@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import BookCard from '../components/BookCard'
@@ -6,17 +6,24 @@ import ConfirmModal from '../components/ConfirmModal'
 import CustomInput from '../components/CustomInput'
 
 const FALLBACK = {
-  'library.search': '搜索书名 / 标签 / 简介…',
-  'library.allTags': '全部标签',
+  'library.search': '搜索书名 / 标签 / 语言…',
+  'library.tagsBtn': '标签',
+  'library.langsBtn': '语言',
   'library.allLangs': '全部语言',
+  'library.selectAll': '全选',
+  'library.clearSel': '清除',
   'library.dateFrom': '从',
   'library.dateTo': '到',
   'library.viewGrid': '卡片视图',
   'library.viewShelf': '书架模式',
-  'library.words': '字',
-  'library.chapters': '章',
-  'library.createdAt': '创建于',
   'library.clearFilters': '清除筛选',
+  'library.tagPickTitle': '选择标签',
+  'library.tagSearchPh': '搜索标签…',
+  'library.noTagMatch': '没有匹配的标签',
+  'library.sugTitle': '书名',
+  'library.sugTag': '标签',
+  'library.sugLang': '语言',
+  'library.done': '完成',
 }
 
 // 书脊配色（按书名哈希取色，同一本书颜色稳定）
@@ -53,9 +60,29 @@ function BookSpine({ book, onOpen, langLabel }) {
   const [c1, c2] = SPINE_COLORS[hashStr(book.title) % SPINE_COLORS.length]
   const w = spineWidth(book.word_count)
   const h = spineHeight(book.title)
+  // 根据书在视口中的位置决定信息卡对齐方式，避免被屏幕边缘遮挡
+  const [tipAlign, setTipAlign] = useState('center') // left | center | right
+  const TIP_W = 256
+
+  const handleEnter = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const center = rect.left + rect.width / 2
+    if (center - TIP_W / 2 < 12) setTipAlign('left')
+    else if (center + TIP_W / 2 > window.innerWidth - 12) setTipAlign('right')
+    else setTipAlign('center')
+  }
+
+  const tipPos =
+    tipAlign === 'left'
+      ? 'left-0'
+      : tipAlign === 'right'
+        ? 'right-0'
+        : 'left-1/2 -translate-x-1/2'
+  const arrowPos =
+    tipAlign === 'left' ? 'ml-3' : tipAlign === 'right' ? 'mr-3 ml-auto' : 'mx-auto'
 
   return (
-    <div className="relative group self-end" style={{ width: w, height: h }}>
+    <div className="relative group self-end" style={{ width: w, height: h }} onMouseEnter={handleEnter}>
       <button
         onClick={() => onOpen(book.id)}
         className="w-full h-full rounded-t-sm shadow-[2px_0_4px_rgba(0,0,0,0.35)] transition-transform duration-150 group-hover:-translate-y-3 cursor-pointer overflow-hidden"
@@ -65,7 +92,6 @@ function BookSpine({ book, onOpen, langLabel }) {
           borderRight: '1px solid rgba(0,0,0,0.35)',
         }}
       >
-        {/* 书脊上下装饰线 */}
         <div className="absolute top-2 left-1 right-1 h-px bg-white/30" />
         <div className="absolute bottom-2 left-1 right-1 h-px bg-white/30" />
         <span
@@ -83,8 +109,8 @@ function BookSpine({ book, onOpen, langLabel }) {
         </span>
       </button>
 
-      {/* 悬停资料卡 */}
-      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30">
+      {/* 悬停资料卡（按位置自适应对齐） */}
+      <div className={`pointer-events-none absolute bottom-full ${tipPos} mb-4 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30`}>
         <div className="bg-gray-900/95 text-white rounded-lg shadow-xl p-3 text-xs space-y-1.5">
           <p className="font-semibold text-sm leading-snug">{book.title}</p>
           {book.description && <p className="text-gray-300 line-clamp-3">{book.description}</p>}
@@ -100,7 +126,7 @@ function BookSpine({ book, onOpen, langLabel }) {
             <p className="text-gray-400">{String(book.created_at).slice(0, 10)}</p>
           )}
         </div>
-        <div className="w-2.5 h-2.5 bg-gray-900/95 rotate-45 mx-auto -mt-1.5" />
+        <div className={`w-2.5 h-2.5 bg-gray-900/95 rotate-45 -mt-1.5 ${arrowPos}`} />
       </div>
     </div>
   )
@@ -108,7 +134,6 @@ function BookSpine({ book, onOpen, langLabel }) {
 
 function BookShelf({ books, langName }) {
   const navigate = useNavigate()
-  // 按厚度装箱：每层书架放约 900px 宽
   const shelves = useMemo(() => {
     const rows = []
     let row = [], width = 0
@@ -143,7 +168,6 @@ function BookShelf({ books, langName }) {
               />
             ))}
           </div>
-          {/* 隔板 */}
           <div
             className="h-4 rounded-sm shadow-md mb-1"
             style={{ background: 'linear-gradient(180deg, #8a5a2b 0%, #6b4423 55%, #4a2e16 100%)' }}
@@ -171,11 +195,19 @@ function Library() {
 
   // 搜索与筛选
   const [query, setQuery] = useState('')
-  const [tagFilter, setTagFilter] = useState('')
-  const [langFilter, setLangFilter] = useState('')
+  const [showSuggest, setShowSuggest] = useState(false)
+  const [selectedTags, setSelectedTags] = useState([])     // 多选标签（弹窗选择）
+  const [selectedLangs, setSelectedLangs] = useState([])   // 多选语言（复选框）；空 = 全部
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [view, setView] = useState('grid') // grid | shelf
+
+  // 标签弹窗 / 语言下拉
+  const [showTagModal, setShowTagModal] = useState(false)
+  const [tagSearch, setTagSearch] = useState('')
+  const [showLangMenu, setShowLangMenu] = useState(false)
+  const langMenuRef = useRef(null)
+  const searchBoxRef = useRef(null)
 
   const langNames = {
     'zh-CN': '简体中文', 'zh-TW': '繁體中文', 'en': 'English', 'ja': '日本語',
@@ -189,6 +221,16 @@ function Library() {
     fetchBooks()
     fetchBooksDir()
     fetchUserInfo()
+  }, [])
+
+  // 点击外部关闭语言下拉 / 搜索建议
+  useEffect(() => {
+    const onDown = (e) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target)) setShowLangMenu(false)
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) setShowSuggest(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
   const fetchBooks = async () => {
@@ -239,9 +281,7 @@ function Library() {
     }
   }
 
-  const handleDelete = (bookId) => {
-    setDeleteModal({ open: true, bookId })
-  }
+  const handleDelete = (bookId) => setDeleteModal({ open: true, bookId })
 
   const confirmDelete = async () => {
     try {
@@ -256,12 +296,28 @@ function Library() {
   const allTags = useMemo(() => [...new Set(books.flatMap((b) => b.tags || []))], [books])
   const allLangs = useMemo(() => [...new Set(books.map((b) => b.language).filter(Boolean))], [books])
 
+  const toggleTag = (tag) =>
+    setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]))
+  const toggleLang = (l) =>
+    setSelectedLangs((prev) => (prev.includes(l) ? prev.filter((x) => x !== l) : [...prev, l]))
+
+  // 分类搜索建议：书名 / 标签 / 语言
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase().replace(/^#/, '')
+    if (!q) return null
+    return {
+      titles: books.filter((b) => (b.title || '').toLowerCase().includes(q)).slice(0, 5),
+      tags: allTags.filter((tag) => tag.toLowerCase().includes(q) && !selectedTags.includes(tag)).slice(0, 8),
+      langs: allLangs.filter((l) => (langName(l).toLowerCase().includes(q) || l.toLowerCase().includes(q)) && !selectedLangs.includes(l)).slice(0, 5),
+    }
+  }, [query, books, allTags, allLangs, selectedTags, selectedLangs])
+
   const filteredBooks = books.filter((book) => {
     if (filter !== 'all' && book.source !== filter) return false
-    if (tagFilter && !(book.tags || []).includes(tagFilter)) return false
-    if (langFilter && book.language !== langFilter) return false
+    if (selectedTags.length > 0 && !selectedTags.some((tag) => (book.tags || []).includes(tag))) return false
+    if (selectedLangs.length > 0 && !selectedLangs.includes(book.language)) return false
     if (query) {
-      const q = query.toLowerCase()
+      const q = query.toLowerCase().replace(/^#/, '')
       const inTitle = (book.title || '').toLowerCase().includes(q)
       const inDesc = (book.description || '').toLowerCase().includes(q)
       const inTags = (book.tags || []).some((tag) => tag.toLowerCase().includes(q))
@@ -277,13 +333,16 @@ function Library() {
     return true
   })
 
-  const hasFilters = query || tagFilter || langFilter || dateFrom || dateTo
+  const hasFilters = query || selectedTags.length || selectedLangs.length || dateFrom || dateTo
+  const clearAll = () => { setQuery(''); setSelectedTags([]); setSelectedLangs([]); setDateFrom(''); setDateTo('') }
 
   const filterOptions = [
     { key: 'all', label: t('library.all') },
     { key: 'local', label: t('library.local') },
     { key: 'p2p', label: t('library.p2p') }
   ]
+
+  const filteredTagOptions = allTags.filter((tag) => tag.toLowerCase().includes(tagSearch.trim().toLowerCase().replace(/^#/, '')))
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -341,63 +400,136 @@ function Library() {
         </div>
       )}
 
-      {/* 搜索与筛选栏 */}
+      {/* 搜索与筛选栏（各控件定宽，互不挤压） */}
       <div className="bg-white rounded-lg shadow p-4 mb-6 space-y-3">
         <div className="flex gap-2 flex-wrap items-center">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={tt('library.search')}
-            className="flex-1 min-w-[220px] px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
-          />
-          <select
-            value={langFilter}
-            onChange={(e) => setLangFilter(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+          {/* 搜索框 + 分类建议 */}
+          <div ref={searchBoxRef} className="relative flex-1 min-w-[240px]">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setShowSuggest(true) }}
+              onFocus={() => setShowSuggest(true)}
+              placeholder={tt('library.search')}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
+            />
+            {showSuggest && suggestions && (suggestions.titles.length || suggestions.tags.length || suggestions.langs.length) > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-40 overflow-hidden max-h-80 overflow-y-auto">
+                {suggestions.tags.length > 0 && (
+                  <div className="p-2 border-b border-gray-100">
+                    <p className="text-[10px] text-gray-400 uppercase mb-1 px-1">{tt('library.sugTag')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {suggestions.tags.map((tag) => (
+                        <button key={tag}
+                          onClick={() => { toggleTag(tag); setQuery(''); setShowSuggest(false) }}
+                          className="px-2.5 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
+                          #{tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {suggestions.langs.length > 0 && (
+                  <div className="p-2 border-b border-gray-100">
+                    <p className="text-[10px] text-gray-400 uppercase mb-1 px-1">{tt('library.sugLang')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {suggestions.langs.map((l) => (
+                        <button key={l}
+                          onClick={() => { toggleLang(l); setQuery(''); setShowSuggest(false) }}
+                          className="px-2.5 py-1 text-xs rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+                          {langName(l)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {suggestions.titles.length > 0 && (
+                  <div className="p-2">
+                    <p className="text-[10px] text-gray-400 uppercase mb-1 px-1">{tt('library.sugTitle')}</p>
+                    {suggestions.titles.map((b) => (
+                      <button key={b.id}
+                        onClick={() => { setQuery(b.title); setShowSuggest(false) }}
+                        className="block w-full text-left px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded truncate">
+                        📖 {b.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 标签按钮 → 弹窗（定宽） */}
+          <button
+            onClick={() => { setShowTagModal(true); setTagSearch('') }}
+            className={`w-28 shrink-0 px-3 py-2 text-sm border rounded-lg transition-colors text-center ${
+              selectedTags.length ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-300'
+            }`}
           >
-            <option value="">{tt('library.allLangs')}</option>
-            {allLangs.map((l) => (
-              <option key={l} value={l}>{langName(l)}</option>
-            ))}
-          </select>
-          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            # {tt('library.tagsBtn')}{selectedTags.length ? ` (${selectedTags.length})` : ''}
+          </button>
+
+          {/* 语言复选下拉（定宽） */}
+          <div ref={langMenuRef} className="relative shrink-0">
+            <button
+              onClick={() => setShowLangMenu(!showLangMenu)}
+              className={`w-36 px-3 py-2 text-sm border rounded-lg transition-colors text-center ${
+                selectedLangs.length ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-300 bg-white text-gray-600 hover:border-emerald-300'
+              }`}
+            >
+              🌐 {selectedLangs.length ? `${tt('library.langsBtn')} (${selectedLangs.length})` : tt('library.allLangs')}
+            </button>
+            {showLangMenu && (
+              <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-40 p-2">
+                <div className="flex gap-2 px-1 pb-2 border-b border-gray-100 mb-1">
+                  <button onClick={() => setSelectedLangs([...allLangs])} className="text-xs text-indigo-600 hover:underline">{tt('library.selectAll')}</button>
+                  <button onClick={() => setSelectedLangs([])} className="text-xs text-gray-500 hover:underline">{tt('library.clearSel')}</button>
+                </div>
+                <div className="max-h-56 overflow-y-auto">
+                  {allLangs.map((l) => (
+                    <label key={l} className="flex items-center gap-2 px-1.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedLangs.includes(l)}
+                        onChange={() => toggleLang(l)}
+                        className="accent-indigo-600"
+                      />
+                      {langName(l)}
+                    </label>
+                  ))}
+                  {allLangs.length === 0 && <p className="text-xs text-gray-400 px-1.5 py-2">—</p>}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 text-sm text-gray-500 shrink-0">
             <span>{tt('library.dateFrom')}</span>
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg" />
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-[140px]" />
             <span>{tt('library.dateTo')}</span>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg" />
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg w-[140px]" />
           </div>
+
           {hasFilters && (
-            <button
-              onClick={() => { setQuery(''); setTagFilter(''); setLangFilter(''); setDateFrom(''); setDateTo('') }}
-              className="text-xs text-indigo-600 hover:underline"
-            >
+            <button onClick={clearAll} className="text-xs text-indigo-600 hover:underline shrink-0">
               {tt('library.clearFilters')}
             </button>
           )}
         </div>
 
-        {allTags.length > 0 && (
+        {/* 只展示已选中的标签 */}
+        {selectedTags.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
-            <button
-              onClick={() => setTagFilter('')}
-              className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
-                tagFilter === '' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {tt('library.allTags')}
-            </button>
-            {allTags.map((tag) => (
+            {selectedTags.map((tag) => (
               <button
                 key={tag}
-                onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
-                className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
-                  tagFilter === tag ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                onClick={() => toggleTag(tag)}
+                className="px-2.5 py-1 text-xs rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
+                title="点击移除"
               >
-                #{tag}
+                #{tag} ×
               </button>
             ))}
           </div>
@@ -421,7 +553,6 @@ function Library() {
           ))}
         </div>
 
-        {/* 视图切换：卡片 / 模拟真实书架 */}
         <div className="flex rounded-lg border border-gray-200 overflow-hidden">
           <button
             onClick={() => setView('grid')}
@@ -455,6 +586,58 @@ function Library() {
       {filteredBooks.length === 0 && (
         <div className="text-center py-12 text-gray-500">
           {t('library.noBooks')}
+        </div>
+      )}
+
+      {/* 标签选择弹窗：搜索 + 多选 */}
+      {showTagModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowTagModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-[520px] max-w-[92vw] max-h-[70vh] flex flex-col p-5">
+            <div className="flex items-center mb-3">
+              <h2 className="text-lg font-semibold text-gray-900 flex-1">{tt('library.tagPickTitle')}</h2>
+              <button onClick={() => setShowTagModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <input
+              type="text"
+              value={tagSearch}
+              onChange={(e) => setTagSearch(e.target.value)}
+              placeholder={tt('library.tagSearchPh')}
+              autoFocus
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
+            />
+            <div className="flex-1 overflow-y-auto">
+              <div className="flex flex-wrap gap-2">
+                {filteredTagOptions.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
+                    className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                      selectedTags.includes(tag)
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+                    }`}
+                  >
+                    #{tag}
+                  </button>
+                ))}
+                {filteredTagOptions.length === 0 && (
+                  <p className="text-sm text-gray-400 py-6 w-full text-center">{tt('library.noTagMatch')}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-between items-center border-t pt-3 mt-3">
+              <button onClick={() => setSelectedTags([])} className="text-xs text-gray-500 hover:underline">
+                {tt('library.clearSel')}
+              </button>
+              <button
+                onClick={() => setShowTagModal(false)}
+                className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+              >
+                {tt('library.done')}{selectedTags.length ? ` (${selectedTags.length})` : ''}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
