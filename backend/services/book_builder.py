@@ -66,22 +66,48 @@ def _chapter_prefix(index: int, language: str = "zh-CN") -> str:
     else:
         return f"Chapter {index}: "
 
-def save_book(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN") -> str:
-    """保存书籍到本地文件和数据库"""
+_CJK_CHAR_RE = re.compile(r'[一-鿿぀-ヿ가-힯]')
+_LATIN_WORD_RE = re.compile(r'[a-zA-Zà-ÿÀ-Ÿа-яА-Я0-9]+')
+
+
+def count_words(text: str) -> int:
+    """统计字数：CJK 按字符计，其他按单词计。"""
+    plain = re.sub(r'[#*`>\[\]()_~-]', '', text)
+    cjk = len(_CJK_CHAR_RE.findall(plain))
+    latin = len(_LATIN_WORD_RE.findall(_CJK_CHAR_RE.sub(' ', plain)))
+    return cjk + latin
+
+
+def _do_save_book(
+    db: Session,
+    outline: dict,
+    chapters: list,
+    user_id: str,
+    language: str = "zh-CN",
+    tags: list = None,
+) -> str:
     book_id = str(uuid.uuid4())  # 完整 UUID
-    
+
     # 生成 Markdown 内容
     md_content = f"# {outline['title']}\n\n"
     md_content += f"{outline['description']}\n\n---\n\n"
-    
+
     for i, (chapter_data, content) in enumerate(zip(outline['chapters'], chapters)):
         md_content += f"## {_chapter_prefix(i+1, language)}{chapter_data['title']}\n\n{content}\n\n"
-    
+
     # 保存到本地文件
     filepath = get_book_filepath(book_id, outline['title'])
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(md_content)
-    
+
+    # 标签：调用方传入（用户标签 + AI 标签合并），兜底取大纲里的 AI 标签
+    final_tags = tags if tags else outline.get("tags") or []
+    if not isinstance(final_tags, list):
+        final_tags = []
+    # 统一规范：去掉用户/AI 可能带的 # 前缀，存纯文字（展示层负责加 #）
+    final_tags = [str(t).strip().lstrip("#").strip() for t in final_tags]
+    final_tags = [t for t in final_tags if t][:10]
+
     # 保存到数据库
     book = Book(
         id=book_id,
@@ -91,44 +117,23 @@ def save_book(db: Session, outline: dict, chapters: list, user_id: str, language
         file_path=str(filepath),
         author_id=user_id,
         source="local",
-        language=language
+        language=language,
+        tags=final_tags,
+        word_count=count_words(md_content),
     )
     db.add(book)
     db.commit()
-    
+
     return book_id
 
-def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN") -> str:
+
+def save_book(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN", tags: list = None) -> str:
+    """保存书籍到本地文件和数据库"""
+    return _do_save_book(db, outline, chapters, user_id, language, tags)
+
+def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN", tags: list = None) -> str:
     """同步版本的书籍保存，用于后台线程"""
-    book_id = str(uuid.uuid4())  # 完整 UUID
-    
-    # 生成 Markdown 内容
-    md_content = f"# {outline['title']}\n\n"
-    md_content += f"{outline['description']}\n\n---\n\n"
-    
-    for i, (chapter_data, content) in enumerate(zip(outline['chapters'], chapters)):
-        md_content += f"## {_chapter_prefix(i+1, language)}{chapter_data['title']}\n\n{content}\n\n"
-    
-    # 保存到本地文件
-    filepath = get_book_filepath(book_id, outline['title'])
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(md_content)
-    
-    # 保存到数据库
-    book = Book(
-        id=book_id,
-        title=outline['title'],
-        description=outline['description'],
-        outline=outline,
-        file_path=str(filepath),
-        author_id=user_id,
-        source="local",
-        language=language
-    )
-    db.add(book)
-    db.commit()
-    
-    return book_id
+    return _do_save_book(db, outline, chapters, user_id, language, tags)
 
 def save_p2p_book(db: Session, book_data: dict, peer_id: str) -> str:
     """保存 P2P 接收的书籍"""

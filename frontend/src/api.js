@@ -146,4 +146,107 @@ export const api = {
     const response = await fetch(`${API_BASE}/providers/migrate-env`, { method: 'POST' })
     return response.json()
   },
+
+  // ---------------- 知识源 (RAG) ----------------
+
+  async listSources(category = null) {
+    const url = category
+      ? `${API_BASE}/knowledge/sources?category=${category}`
+      : `${API_BASE}/knowledge/sources`
+    const response = await fetch(url)
+    return response.json()
+  },
+
+  async uploadSource(file, category, { name = '', prompt = '', language = '' } = {}) {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('category', category)
+    if (name) form.append('name', name)
+    if (prompt) form.append('prompt', prompt)
+    if (language) form.append('language', language)
+    const response = await fetch(`${API_BASE}/knowledge/sources/upload`, {
+      method: 'POST',
+      body: form
+    })
+    if (!response.ok) throw new Error((await response.json()).detail || 'upload failed')
+    return response.json()
+  },
+
+  async linkSource(path, category, { name = '', prompt = '', language = '' } = {}) {
+    const response = await fetch(`${API_BASE}/knowledge/sources/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, category, name, prompt, language })
+    })
+    if (!response.ok) throw new Error((await response.json()).detail || 'link failed')
+    return response.json()
+  },
+
+  async createTextSource(name, category, content, { prompt = '', language = '' } = {}) {
+    const response = await fetch(`${API_BASE}/knowledge/sources/text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, category, content, prompt, language })
+    })
+    if (!response.ok) throw new Error((await response.json()).detail || 'create failed')
+    return response.json()
+  },
+
+  async updateSource(id, patch) {
+    const response = await fetch(`${API_BASE}/knowledge/sources/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    })
+    return response.json()
+  },
+
+  async deleteSource(id) {
+    const response = await fetch(`${API_BASE}/knowledge/sources/${id}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error((await response.json()).detail || 'delete failed')
+    return response.json()
+  },
+
+  async reindexSource(id) {
+    const response = await fetch(`${API_BASE}/knowledge/sources/${id}/reindex`, { method: 'POST' })
+    return response.json()
+  },
+
+  // ---------------- 写作卡 ----------------
+
+  async listCards() {
+    const response = await fetch(`${API_BASE}/knowledge/cards`)
+    return response.json()
+  },
+
+  async createCard(card) {
+    const response = await fetch(`${API_BASE}/knowledge/cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(card)
+    })
+    if (!response.ok) throw new Error((await response.json()).detail || 'create failed')
+    return response.json()
+  },
+
+  async updateCard(id, card) {
+    const response = await fetch(`${API_BASE}/knowledge/cards/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(card)
+    })
+    if (!response.ok) throw new Error((await response.json()).detail || 'update failed')
+    return response.json()
+  },
+
+  async deleteCard(id) {
+    const response = await fetch(`${API_BASE}/knowledge/cards/${id}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error((await response.json()).detail || 'delete failed')
+    return response.json()
+  },
+
+  async duplicateCard(id) {
+    const response = await fetch(`${API_BASE}/knowledge/cards/${id}/duplicate`, { method: 'POST' })
+    return response.json()
+  },
 }

@@ -21,6 +21,7 @@ class GenerateRequest(BaseModel):
     model_name: str | None = None
     card_id: str | None = None  # 写作卡
     extra_requirements: str = ""  # 临时额外需求（与写作卡的额外需求合并）
+    tags: list[str] = []  # 用户自填标签；留空则用 AI 生成的标签
 
 
 def _load_card(card_id: str | None):
@@ -78,6 +79,7 @@ def run_generation_task(
     model_name: str = None,
     card_id: str = None,
     extra_requirements: str = "",
+    user_tags: list = None,
 ):
     """在后台线程中运行生成任务"""
     from services.llm_service import generate_outline_sync, generate_chapter_sync
@@ -196,8 +198,10 @@ def run_generation_task(
                 "chapter_content": content,
             }
 
-        # 保存书籍
-        book_id = save_book_sync(db, outline, chapters, user_id, language)
+        # 保存书籍（标签 = 用户标签 + AI 标签，去重）
+        ai_tags = outline.get("tags") or []
+        merged_tags = list(dict.fromkeys([*(user_tags or []), *ai_tags]))
+        book_id = save_book_sync(db, outline, chapters, user_id, language, tags=merged_tags)
 
         # 更新历史记录状态
         db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update(
@@ -272,6 +276,7 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         request.model_name,
         request.card_id,
         request.extra_requirements,
+        request.tags,
     )
 
     async def event_generator():

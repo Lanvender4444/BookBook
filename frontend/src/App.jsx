@@ -5,6 +5,7 @@ import Library from './pages/Library'
 import Reader from './pages/Reader'
 import Network from './pages/Network'
 import History from './pages/History'
+import Cards from './pages/Cards'
 import useStore from './store'
 import { useState, useRef, useEffect } from 'react'
 import TypewriterHeading from './components/TypewriterHeading'
@@ -184,6 +185,7 @@ function NavBar() {
           <div className="flex items-center space-x-1">
             <a href="/generate" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.generate')}</a>
             <a href="/history" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.history')}</a>
+            <a href="/cards" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.cards') === 'nav.cards' ? '写作卡' : t('nav.cards')}</a>
             <a href="/library" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.library')}</a>
             <a href="/network" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.network')}</a>
             <div className="ml-2 pl-2 border-l border-gray-200">
@@ -224,6 +226,7 @@ function App() {
             <Route path="/" element={<Generate />} />
             <Route path="/generate" element={<Generate />} />
             <Route path="/history" element={<History />} />
+            <Route path="/cards" element={<Cards />} />
             <Route path="/library" element={<Library />} />
             <Route path="/reader/:id" element={<Reader />} />
             <Route path="/network" element={<Network />} />

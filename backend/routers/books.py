@@ -23,7 +23,23 @@ class UpdateDirRequest(BaseModel):
 
 @router.get("/")
 def list_books(db: Session = Depends(get_db)):
-    return get_all_books(db)
+    books = get_all_books(db)
+    return [
+        {
+            "id": b.id,
+            "title": b.title,
+            "description": b.description,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "author_id": b.author_id,
+            "source": b.source,
+            "peer_origin": b.peer_origin,
+            "language": b.language,
+            "tags": b.tags or [],
+            "word_count": b.word_count,
+            "chapter_count": len((b.outline or {}).get("chapters", [])) if b.outline else None,
+        }
+        for b in books
+    ]
 
 @router.get("/{book_id}")
 def get_book_detail(book_id: str, db: Session = Depends(get_db)):

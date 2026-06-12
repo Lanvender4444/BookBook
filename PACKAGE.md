@@ -9,6 +9,9 @@
 > 脚本会自动：清理残留 backend.exe 进程 → PyInstaller 重打后端 → 复制 sidecar → tauri build。
 > 以下为手动分步说明。
 
+> 注意：RAG/写作卡功能新增了后端依赖（pypdf、python-multipart），重打包前先在 venv 里执行
+> `pip install -r backend\requirements.txt`，否则打出的 backend.exe 缺模块。
+
 ## 前置要求
 
 | 工具 | 版本要求 | 用途 |

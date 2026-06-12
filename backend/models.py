@@ -18,6 +18,8 @@ class Book(Base):
     source = Column(String, default="local")
     peer_origin = Column(String, nullable=True)
     language = Column(String, nullable=True)
+    tags = Column(JSON, nullable=True)  # 标签：用户自填或 AI 生成
+    word_count = Column(Integer, nullable=True)  # 全书字数（书架视图厚度依据）
 
 
 class GenerationHistory(Base):
@@ -118,6 +120,7 @@ class WritingCard(Base):
     reference_ids = Column(JSON, default=list)
     continuation_ids = Column(JSON, default=list)
     extra_requirements = Column(Text, nullable=True)
+    tags = Column(JSON, default=list)  # 写作卡分类标签
     builtin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

@@ -225,6 +225,7 @@ def _card_to_dict(c: WritingCard) -> dict:
         "reference_ids": c.reference_ids or [],
         "continuation_ids": c.continuation_ids or [],
         "extra_requirements": c.extra_requirements or "",
+        "tags": c.tags or [],
         "builtin": c.builtin,
         "created_at": c.created_at.isoformat() if c.created_at else None,
     }
@@ -237,6 +238,7 @@ class CardRequest(BaseModel):
     reference_ids: list[str] = []
     continuation_ids: list[str] = []
     extra_requirements: str = ""
+    tags: list[str] = []
 
 
 def _validate_card_sources(req: CardRequest, db: Session):
@@ -275,6 +277,7 @@ def create_card(req: CardRequest, db: Session = Depends(get_db)):
         reference_ids=req.reference_ids,
         continuation_ids=req.continuation_ids,
         extra_requirements=req.extra_requirements or None,
+        tags=[t.strip().lstrip("#").strip() for t in req.tags if t.strip().lstrip("#").strip()],
     )
     db.add(card)
     db.commit()
@@ -295,6 +298,7 @@ def update_card(card_id: str, req: CardRequest, db: Session = Depends(get_db)):
     card.reference_ids = req.reference_ids
     card.continuation_ids = req.continuation_ids
     card.extra_requirements = req.extra_requirements or None
+    card.tags = [t.strip().lstrip("#").strip() for t in req.tags if t.strip().lstrip("#").strip()]
     db.commit()
     return _card_to_dict(card)
 
@@ -324,6 +328,7 @@ def duplicate_card(card_id: str, db: Session = Depends(get_db)):
         reference_ids=list(card.reference_ids or []),
         continuation_ids=list(card.continuation_ids or []),
         extra_requirements=card.extra_requirements,
+        tags=list(card.tags or []),
         builtin=False,
     )
     db.add(copy)

@@ -431,6 +431,7 @@ def _build_outline_prompts(
 {{
     "title": "书籍标题（{lang_name}）",
     "description": "书籍简介（{lang_name}）",
+    "tags": ["3到6个内容分类标签（{lang_name}，每个2-6字，如题材/领域/受众）"],
     "chapters": [
         {{"title": "章节标题（{lang_name}）", "summary": "章节概要（{lang_name}）"}}
     ]
