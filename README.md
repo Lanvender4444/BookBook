@@ -10,7 +10,10 @@
 >
 > **BookBook is an AI-powered eBook generator that lets you create beautiful ebooks with AI assistance.**
 
-## 快速开始
+## 下载发行版
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/Lanvender4444/BookBook)](https://github.com/Lanvender4444/BookBook/releases/latest)
+
+## 本地部署
 ### 配置环境变量
 ```bash
 cd backend
