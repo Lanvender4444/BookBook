@@ -29,11 +29,6 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "windows": {
-      "nsis": {
-        "installMode": "currentUser"
-      }
-    },
     "externalBin": [
       "binaries/backend"
     ],

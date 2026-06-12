@@ -2,22 +2,34 @@ import sys
 import asyncio
 import json
 from pathlib import Path
+from utils import get_app_data_dir, setup_debug_logging, load_app_config
 
-# --- PyInstaller --noconsole 加固 ---
-# windowed 模式下 sys.stdout/stderr 为 None，
-# 任何 print / uvicorn 日志写入都会导致进程崩溃。
-# frozen 时把输出重定向到 exe 同级目录的 backend.log。
-if getattr(sys, "frozen", False):
-    _log_file = Path(sys.executable).parent / "backend.log"
+log_file = setup_debug_logging()
+print(f"[BOOT] Backend starting, sys.platform={sys.platform}, sys.frozen={getattr(sys, 'frozen', False)}")
+print(f"[BOOT] sys.executable={sys.executable}")
+print(f"[BOOT] APPDATA={__import__('os').environ.get('APPDATA', 'NOT SET')}")
+print(f"[BOOT] DATA_DIR={get_app_data_dir()}")
+print(f"[BOOT] Log file={log_file}")
+
+import os
+import threading
+
+
+def _watch_parent_exit():
+    """Tauri sidecar 模式下父进程退出会关闭 stdin 管道。
+    读到 EOF 立即自杀，即使主程序崩溃/被强杀也不会留下僵尸后端占用端口。"""
     try:
-        _log_stream = open(_log_file, "a", encoding="utf-8", buffering=1)
-    except OSError:
-        import os
-        _log_stream = open(os.devnull, "w", encoding="utf-8")
-    if sys.stdout is None:
-        sys.stdout = _log_stream
-    if sys.stderr is None:
-        sys.stderr = _log_stream
+        if sys.stdin is None:
+            return
+        sys.stdin.buffer.read()  # 阻塞直到父进程关闭管道
+    except Exception:
+        pass
+    print("[BOOT] Parent process gone, shutting down backend")
+    os._exit(0)
+
+
+if getattr(sys, "frozen", False):
+    threading.Thread(target=_watch_parent_exit, daemon=True).start()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,18 +39,7 @@ from routers import providers
 from routers.p2p import p2p_service
 from services.identity import generate_user_id
 
-def get_project_root():
-    if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
-
-_project_root = get_project_root()
-_config_path = _project_root / "config.json"
-if _config_path.exists():
-    with open(_config_path, "r", encoding="utf-8") as f:
-        _config = json.load(f)
-else:
-    _config = {}
+_config = load_app_config()
 
 BACKEND_PORT = int(_config.get("backend_port", 18140))
 FRONTEND_PORT = int(_config.get("frontend_port", 5173))
@@ -57,8 +58,13 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    init_db()
-    # 启动 P2P TCP 服务器（后台运行）
+    try:
+        init_db()
+        print("[DB] init_db() OK - tables created")
+    except Exception as e:
+        print(f"[DB] init_db() FAILED: {e}")
+        import traceback
+        traceback.print_exc()
     try:
         asyncio.create_task(p2p_service.start())
         print(f"[P2P] TCP server started on port {P2P_PORT}")
@@ -101,9 +107,4 @@ app.include_router(providers.router)
 if __name__ == "__main__":
     import uvicorn
 
-    # 127.0.0.1 即可（仅供本机 Tauri 前端访问），避免防火墙弹窗；
-    # frozen 模式下关闭 uvicorn 默认日志配置，防止它向已失效的终端流写日志
-    _kwargs = {}
-    if getattr(sys, "frozen", False):
-        _kwargs["log_config"] = None  # 禁用 uvicorn 默认日志配置，防止写入失效的终端流
-    uvicorn.run(app, host="127.0.0.1", port=BACKEND_PORT, **_kwargs)
+    uvicorn.run(app, host="127.0.0.1", port=BACKEND_PORT, log_config=None)

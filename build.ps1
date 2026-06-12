@@ -1,75 +1,42 @@
 # BookBook 一键打包脚本
-# 用法: 在项目根目录执行  .\build.ps1
-#       仅重打后端:        .\build.ps1 -BackendOnly
-#       跳过后端(已打过):  .\build.ps1 -SkipBackend
-param(
-    [switch]$BackendOnly,
-    [switch]$SkipBackend
-)
+# 用法: 在项目根目录执行  powershell -ExecutionPolicy Bypass -File build.ps1
+
+# 如果之前执行过开发版，需要手动停止 后端进程
+# taskkill /F /IM backend.exe
 
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 
-function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
-function Fail($msg) { Write-Host "[错误] $msg" -ForegroundColor Red; exit 1 }
+Write-Host "=== [0/4] 清理残留的 backend.exe 进程 ===" -ForegroundColor Cyan
+# 残留进程会锁住 SQLite / 占用端口，也会导致 PyInstaller 无法覆盖 exe
+Get-Process backend -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
 
-# ---------- 0. 环境检查 ----------
-Step "检查环境"
-if (-not (Get-Command rustc -ErrorAction SilentlyContinue)) { Fail "未找到 rustc，请安装 Rust: https://rustup.rs" }
-if (-not (Get-Command npm -ErrorAction SilentlyContinue))   { Fail "未找到 npm，请安装 Node.js >= 18" }
-if (-not (Test-Path "$Root\config.json")) { Fail "项目根目录缺少 config.json" }
-
-$TRIPLE = (rustc -vV | Select-String "host:").ToString().Split(" ")[1].Trim()
-Write-Host "Target triple: $TRIPLE"
-
-$BinDir = "$Root\frontend\src-tauri\binaries"
-$SidecarExe = "$BinDir\backend-$TRIPLE.exe"
-
-# ---------- 1. 打包 Python 后端 ----------
-if (-not $SkipBackend) {
-    Step "打包 Python 后端 (PyInstaller)"
-    $Venv = "$Root\backend\.venv\Scripts"
-    if (-not (Test-Path "$Venv\python.exe")) { Fail "未找到 backend\.venv，请先创建虚拟环境并安装依赖" }
-    if (-not (Test-Path "$Venv\pyinstaller.exe")) {
-        Write-Host "venv 中未安装 PyInstaller，正在安装..."
-        & "$Venv\pip.exe" install pyinstaller
-    }
-
-    Push-Location "$Root\backend"
-    try {
-        # 先杀掉可能残留的旧后端进程，否则 dist\backend.exe 被占用会导致覆盖失败
-        Get-Process backend -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        & "$Venv\pyinstaller.exe" --onefile --noconsole --name backend --clean -y main.py
-        if ($LASTEXITCODE -ne 0) { Fail "PyInstaller 打包失败" }
-    } finally { Pop-Location }
-
-    Step "复制 sidecar 到 Tauri binaries 目录"
-    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
-    Copy-Item "$Root\backend\dist\backend.exe" $SidecarExe -Force
-    Write-Host "已生成: $SidecarExe"
+Write-Host "=== [1/4] PyInstaller 打包后端 ===" -ForegroundColor Cyan
+Push-Location "$Root\backend"
+& ".\.venv\Scripts\Activate.ps1"
+if (-not (Get-Command pyinstaller -ErrorAction SilentlyContinue)) {
+    Write-Host "pyinstaller 未安装，正在安装..." -ForegroundColor Yellow
+    pip install pyinstaller
 }
+pyinstaller --onefile --noconsole --name backend main.py
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "PyInstaller 打包失败" }
+Pop-Location
 
-if ($BackendOnly) { Write-Host "`n后端打包完成 (BackendOnly 模式)" -ForegroundColor Green; exit 0 }
+Write-Host "=== [2/4] 复制 sidecar 到 Tauri binaries ===" -ForegroundColor Cyan
+$Triple = (rustc -vV | Select-String "host:" | ForEach-Object { ($_ -split " ")[1] }).Trim()
+Write-Host "Target triple: $Triple"
+New-Item -ItemType Directory -Force -Path "$Root\frontend\src-tauri\binaries" | Out-Null
+Copy-Item -Path "$Root\backend\dist\backend.exe" `
+          -Destination "$Root\frontend\src-tauri\binaries\backend-$Triple.exe" -Force
 
-# ---------- 2. 检查 sidecar 是否就位 ----------
-if (-not (Test-Path $SidecarExe)) {
-    Fail "缺少 sidecar: $SidecarExe`n请先不带 -SkipBackend 运行一次"
-}
-
-# ---------- 3. 构建 Tauri 应用 ----------
-Step "安装前端依赖"
+Write-Host "=== [3/4] 构建 Tauri 应用 ===" -ForegroundColor Cyan
 Push-Location "$Root\frontend"
-try {
-    if (-not (Test-Path "node_modules")) { npm install; if ($LASTEXITCODE -ne 0) { Fail "npm install 失败" } }
+npm install
+npx tauri build
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Tauri 打包失败" }
+Pop-Location
 
-    Step "构建 Tauri 应用 (npm run build + cargo build + 打包)"
-    npx tauri build
-    if ($LASTEXITCODE -ne 0) { Fail "tauri build 失败" }
-} finally { Pop-Location }
-
-# ---------- 4. 输出产物位置 ----------
-Step "打包完成"
-$Bundle = "$Root\frontend\src-tauri\target\release\bundle"
-Get-ChildItem -Recurse $Bundle -Include *.exe, *.msi -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "  产物: $($_.FullName)" -ForegroundColor Green
-}
+Write-Host "=== [4/4] 完成 ===" -ForegroundColor Green
+Write-Host "安装包: frontend\src-tauri\target\release\bundle\nsis\"
+Write-Host "提示: 重装前请先卸载旧版本，并确认任务管理器中没有残留的 backend.exe"

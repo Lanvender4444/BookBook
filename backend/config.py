@@ -7,18 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_project_root():
-    if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
+from utils import get_app_data_dir, load_app_config
 
-_project_root = get_project_root()
-_config_path = _project_root / "config.json"
-if _config_path.exists():
-    with open(_config_path, "r", encoding="utf-8") as f:
-        _app_config = json.load(f)
-else:
-    _app_config = {}
+_app_config = load_app_config()
 
 BOOKS_DIR = os.getenv("BOOKS_DIR", str(Path.home() / "BookBook"))
 
@@ -658,6 +649,3 @@ def get_public_ip_via_stun() -> str:
             continue
 
     return None
-
-
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/ebooks.db")

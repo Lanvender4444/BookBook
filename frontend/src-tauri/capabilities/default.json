@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions and sidecar",
+  "description": "enables the default permissions, sidecar and notifications",
   "windows": [
     "main"
   ],
@@ -26,6 +26,17 @@
       ]
     },
     "shell:allow-stdin-write",
-    "shell:allow-kill"
+    "shell:allow-kill",
+    "notification:default",
+    "dialog:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    }
   ]
 }

@@ -76,14 +76,6 @@ export const api = {
     }
   },
 
-  async openBook(id, app = null) {
-    const url = app
-      ? `${API_BASE}/books/${id}/open?app=${encodeURIComponent(app)}`
-      : `${API_BASE}/books/${id}/open`
-    const response = await fetch(url, { method: 'POST' })
-    return response.json()
-  },
-
   async getPeers() {
     const response = await fetch(`${API_BASE}/peers`)
     return response.json()

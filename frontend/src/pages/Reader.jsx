@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import 'highlight.js/styles/github.css'
 import '../styles/typora-reader.css'
+import { saveDownload } from '../utils/download'
 
 // ✅ Fix 5: 常量提到组件外，避免每次渲染重新创建对象
 const INDENT_MAP = {
@@ -206,12 +207,8 @@ function Reader() {
         const response = await fetch(`/api/books/${id}/export?format=markdown`)
         const data = await response.json()
         const blob = new Blob([data.content], { type: 'text/markdown' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${safeTitle}.${fmt.ext}`
-        a.click()
-        URL.revokeObjectURL(url)
+        const saved = await saveDownload(`${safeTitle}.${fmt.ext}`, blob)
+        if (!saved) return // 用户取消，不提示“导出成功”
       } else {
         const response = await fetch(`/api/books/${id}/export?format=${format}`)
         if (!response.ok) {
@@ -233,12 +230,8 @@ function Reader() {
         }
 
         const blob = await response.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        URL.revokeObjectURL(url)
+        const saved = await saveDownload(filename, blob)
+        if (!saved) return
       }
       showToast('导出成功', 'success')
     } catch (error) {
