@@ -17,6 +17,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // 启动前清理可能残留的旧 backend 进程，避免端口 18140/47833 被占用
             #[cfg(target_os = "windows")]

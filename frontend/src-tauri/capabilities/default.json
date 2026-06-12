@@ -19,6 +19,16 @@
     "shell:allow-spawn",
     "shell:allow-stdin-write",
     "shell:allow-kill",
-    "notification:default"
+    "notification:default",
+    "dialog:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    }
   ]
 }
