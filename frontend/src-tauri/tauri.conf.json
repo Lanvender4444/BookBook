@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "externalBin": [
       "binaries/backend"
     ],
@@ -39,8 +39,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../../config.json"
-    ]
+    "resources": {
+      "../../config.json": "config.json"
+    }
   }
 }

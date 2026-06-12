@@ -1,5 +1,14 @@
 # BookBook 打包指南
 
+> **推荐：直接在项目根目录运行一键打包脚本**
+>
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File build.ps1
+> ```
+>
+> 脚本会自动：清理残留 backend.exe 进程 → PyInstaller 重打后端 → 复制 sidecar → tauri build。
+> 以下为手动分步说明。
+
 ## 前置要求
 
 | 工具 | 版本要求 | 用途 |
@@ -129,7 +138,7 @@ BookBook/
 
 1. **Sidecar 自动管理**：Tauri 启动时自动拉起 `backend.exe`，窗口关闭时自动 kill，无需手动管理进程。
 2. **config.json 必须存在**：打包后在 exe 同级目录放置 `config.json`，后端和前端都依赖它。`tauri.conf.json` 的 `bundle.resources` 已配置将根目录 `config.json` 打包进去。
-3. **数据目录**：数据库文件保存在 `exe 同级目录/data/` 下（`database.py` 通过 `sys.frozen` 判断路径）。
+3. **数据目录**：数据库文件保存在 `%APPDATA%\BookBook\data\ebooks.db`（不在安装目录，避免 Program Files 写权限问题）；后端日志在 `%APPDATA%\BookBook\logs\backend_debug.log`。config.json 读取优先级：exe 同级目录 → `%APPDATA%\BookBook` → 项目根目录（开发模式）。
 4. **冷启动等待**：Python 后端冷启动约 1-2 秒，前端 `useBackendReady` hook 会轮询 `/api/identity` 直到后端就绪才渲染 UI。
 5. **重新打包 Python 后端时**：每次修改 `backend/` 代码后需重新执行第一步和第二步，然后重新 `npx tauri build`，否则 sidecar 仍是旧版本。
 6. **首次 Rust 编译较慢**：约 5-10 分钟，后续增量编译只需 1-2 分钟。
