@@ -23,7 +23,23 @@ class UpdateDirRequest(BaseModel):
 
 @router.get("/")
 def list_books(db: Session = Depends(get_db)):
-    return get_all_books(db)
+    books = get_all_books(db)
+    return [
+        {
+            "id": b.id,
+            "title": b.title,
+            "description": b.description,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "author_id": b.author_id,
+            "source": b.source,
+            "peer_origin": b.peer_origin,
+            "language": b.language,
+            "tags": b.tags or [],
+            "word_count": b.word_count,
+            "chapter_count": len((b.outline or {}).get("chapters", [])) if b.outline else None,
+        }
+        for b in books
+    ]
 
 @router.get("/{book_id}")
 def get_book_detail(book_id: str, db: Session = Depends(get_db)):
@@ -79,7 +95,7 @@ def export_book(book_id: str, format: str = "markdown", db: Session = Depends(ge
         )
     elif format == "epub":
         try:
-            data = export_to_epub(md_content, title=book.title, language=language)
+            data = export_to_epub(md_content, title=book.title, language=language, book_id=book_id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"EPUB generation failed: {str(e)}")
         return Response(
@@ -89,7 +105,7 @@ def export_book(book_id: str, format: str = "markdown", db: Session = Depends(ge
         )
     elif format == "docx":
         try:
-            data = export_to_docx(md_content, title=book.title, language=language)
+            data = export_to_docx(md_content, title=book.title, language=language, book_id=book_id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
         return Response(
@@ -99,7 +115,7 @@ def export_book(book_id: str, format: str = "markdown", db: Session = Depends(ge
         )
     elif format == "pdf":
         try:
-            data = export_to_pdf(md_content, title=book.title, language=language)
+            data = export_to_pdf(md_content, title=book.title, language=language, book_id=book_id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
         return Response(

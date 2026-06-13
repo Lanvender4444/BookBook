@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import BookCover from './BookCover'
 
 function BookCard({ book, onDelete }) {
   const navigate = useNavigate()
@@ -26,16 +27,29 @@ function BookCard({ book, onDelete }) {
 
   return (
     <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
-      <div className="h-40 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-t-lg flex items-center justify-center">
-        <span className="text-white text-4xl">📖</span>
+      {/* 完整显示封面（3:4 不裁切） */}
+      <div className="aspect-[3/4] rounded-t-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+        <BookCover book={book} fit="meet" />
       </div>
       
       <div className="p-4">
         <h3 className="font-semibold text-lg mb-2 line-clamp-2">{book.title}</h3>
         <p className="text-gray-600 text-sm mb-3 line-clamp-2">{book.description}</p>
-        
+
+        {(book.tags || []).length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {book.tags.slice(0, 5).map((tag) => (
+              <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">#{tag}</span>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
-          <span>{book.outline?.chapters?.length || 0} 章</span>
+          <span>
+            {book.chapter_count ?? book.outline?.chapters?.length ?? 0} 章
+            {book.word_count ? ` · ${book.word_count > 10000 ? (book.word_count / 10000).toFixed(1) + '万' : book.word_count}字` : ''}
+            {book.created_at ? ` · ${String(book.created_at).slice(0, 10)}` : ''}
+          </span>
           <div className="flex gap-1">
             {langLabel && (
               <span className="px-2 py-1 rounded bg-gray-100 text-gray-600">

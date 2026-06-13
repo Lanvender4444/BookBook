@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import { api } from '../api'
 
+// 音效开关：默认关闭，持久化到 localStorage
+const SOUND_KEY = 'bookbook.soundEnabled'
+const readSoundEnabled = () => {
+  try {
+    return localStorage.getItem(SOUND_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 const useStore = create((set, get) => ({
   books: [],
   currentBook: null,
@@ -9,6 +19,17 @@ const useStore = create((set, get) => ({
   chapters: [],
   activeModel: null,
   providersLoaded: false,
+  soundEnabled: readSoundEnabled(),
+
+  setSoundEnabled: (enabled) => {
+    try { localStorage.setItem(SOUND_KEY, enabled ? 'true' : 'false') } catch {}
+    set({ soundEnabled: enabled })
+  },
+  toggleSound: () => {
+    const next = !get().soundEnabled
+    try { localStorage.setItem(SOUND_KEY, next ? 'true' : 'false') } catch {}
+    set({ soundEnabled: next })
+  },
 
   setBooks: (books) => set({ books }),
   setCurrentBook: (book) => set({ currentBook: book }),

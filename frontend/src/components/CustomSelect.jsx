@@ -61,7 +61,7 @@ export default function CustomSelect({ value, onChange, options, disabled = fals
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden animate-dropdown">
           {options.length > 10 && (
             <div className="p-2 border-b">
               <input

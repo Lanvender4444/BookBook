@@ -5,6 +5,7 @@ import Library from './pages/Library'
 import Reader from './pages/Reader'
 import Network from './pages/Network'
 import History from './pages/History'
+import Cards from './pages/Cards'
 import useStore from './store'
 import { useState, useRef, useEffect } from 'react'
 import TypewriterHeading from './components/TypewriterHeading'
@@ -87,7 +88,59 @@ const UI_LANGUAGES = [
   { value: "es-419", label: "español (Latinoamérica)" },
   { value: "es-MX", label: "español (México)" },
   { value: "fr-CA", label: "français (Canada)" },
-  { value: "my", label: "မြန်မာ" }
+  { value: "my", label: "မြန်မာ" },
+  { value: "en-US", label: "English (United States)" },
+  { value: "en-GB", label: "English (United Kingdom)" },
+  { value: "pt", label: "português" },
+  { value: "de-DE", label: "Deutsch (Deutschland)" },
+  { value: "sq", label: "shqip" },
+  { value: "ti", label: "ትግርኛ" },
+  { value: "az-Latn", label: "Azərbaycan (latın)" },
+  { value: "az-Cyrl", label: "Азәрбајҹан дили" },
+  { value: "as", label: "অসমীয়া" },
+  { value: "bs", label: "bosanski" },
+  { value: "cy", label: "Cymraeg" },
+  { value: "et", label: "eesti" },
+  { value: "ha", label: "Hausa" },
+  { value: "doi", label: "डोगरी" },
+  { value: "ig", label: "Igbo" },
+  { value: "su", label: "Basa Sunda" },
+  { value: "ga", label: "Gaeilge" },
+  { value: "kk", label: "қазақ тілі" },
+  { value: "km", label: "ភាសាខ្មែរ" },
+  { value: "rw", label: "Kinyarwanda" },
+  { value: "ks", label: "کٲشُر" },
+  { value: "ky", label: "кыргызча" },
+  { value: "ku", label: "Kurdî" },
+  { value: "ckb", label: "کوردی" },
+  { value: "lo", label: "ລາວ" },
+  { value: "ln", label: "Lingála" },
+  { value: "mg", label: "Malagasy" },
+  { value: "mt", label: "Malti" },
+  { value: "mn", label: "Монгол хэл" },
+  { value: "mni", label: "মৈতৈলোন্" },
+  { value: "no", label: "Norsk" },
+  { value: "ny", label: "Chichewa" },
+  { value: "tt", label: "татарча" },
+  { value: "ba", label: "башҡортса" },
+  { value: "cv", label: "чӑваш" },
+  { value: "ce", label: "нохчийн мотт" },
+  { value: "av", label: "магӀарул мацӀ" },
+  { value: "sah", label: "саха тыла" },
+  { value: "tyv", label: "тыва dыл" },
+  { value: "sr-Latn", label: "srpski (latinica)" },
+  { value: "sl", label: "slovenščina" },
+  { value: "so", label: "Soomaali" },
+  { value: "st", label: "Sesotho" },
+  { value: "tn", label: "Setswana" },
+  { value: "tg", label: "тоҷикӣ" },
+  { value: "tk", label: "Türkmen" },
+  { value: "ug", label: "ئۇيغۇرچە" },
+  { value: "uz", label: "oʻzbek" },
+  { value: "uz-Cyrl", label: "Ўзбек" },
+  { value: "xh", label: "isiXhosa" },
+  { value: "yo", label: "Yorùbá" },
+  { value: "zu", label: "isiZulu" }
 ]
 
 function LanguageSwitcher() {
@@ -136,7 +189,7 @@ function LanguageSwitcher() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+        <div className="absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden animate-dropdown">
           <div className="p-2 border-b">
             <input
               ref={searchRef}
@@ -170,9 +223,35 @@ function LanguageSwitcher() {
   )
 }
 
+function SoundToggle() {
+  const soundEnabled = useStore((s) => s.soundEnabled)
+  const toggleSound = useStore((s) => s.toggleSound)
+  return (
+    <button
+      onClick={toggleSound}
+      title={soundEnabled ? '关闭音效' : '开启音效'}
+      aria-label={soundEnabled ? '关闭音效' : '开启音效'}
+      className={`flex items-center justify-center w-9 h-9 rounded-md transition-colors ${
+        soundEnabled ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+      }`}
+    >
+      {soundEnabled ? (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M17.95 6.05a8 8 0 010 11.9M11 5L6 9H2v6h4l5 4V5z" />
+        </svg>
+      ) : (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M23 9l-6 6M17 9l6 6" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 function NavBar() {
   const { t } = useI18n()
-  
+
   return (
     <nav className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -184,9 +263,11 @@ function NavBar() {
           <div className="flex items-center space-x-1">
             <a href="/generate" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.generate')}</a>
             <a href="/history" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.history')}</a>
+            <a href="/cards" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.cards') === 'nav.cards' ? '写作卡' : t('nav.cards')}</a>
             <a href="/library" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.library')}</a>
             <a href="/network" className="px-3 py-2 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-md transition-colors">{t('nav.network')}</a>
-            <div className="ml-2 pl-2 border-l border-gray-200">
+            <div className="ml-2 pl-2 border-l border-gray-200 flex items-center gap-1">
+              <SoundToggle />
               <LanguageSwitcher />
             </div>
           </div>
@@ -224,6 +305,7 @@ function App() {
             <Route path="/" element={<Generate />} />
             <Route path="/generate" element={<Generate />} />
             <Route path="/history" element={<History />} />
+            <Route path="/cards" element={<Cards />} />
             <Route path="/library" element={<Library />} />
             <Route path="/reader/:id" element={<Reader />} />
             <Route path="/network" element={<Network />} />

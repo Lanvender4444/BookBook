@@ -12,6 +12,16 @@ import TypewriterPlaceholder from '../components/TypewriterPlaceholder'
 import ProviderModal from '../components/ProviderModal'
 import { sendSystemNotification, requestNotificationPermission } from '../utils/notify'
 
+// 标签解析：以 # 为标记（如 "#小说 #悬疑"）；无 # 时兼容逗号分隔
+export function parseTags(input) {
+  if (!input) return []
+  const clean = (s) => s.trim().replace(/[,，、;；\s]+$/g, '').trim()
+  if (input.includes('#')) {
+    return input.split('#').map(clean).filter(Boolean)
+  }
+  return input.split(/[,，、;；]/).map(clean).filter(Boolean)
+}
+
 function Generate() {
   const { t, locale } = useI18n()
   const [searchParams] = useSearchParams()
@@ -19,9 +29,9 @@ function Generate() {
   const [requirements, setRequirements] = useState({
     difficulty: searchParams.get('difficulty') || 'medium',
     word_count: searchParams.get('word_count') || '5000',
-    chapter_count: searchParams.get('chapter_count') || '5-8',
-    style: searchParams.get('style') || ''
+    chapter_count: searchParams.get('chapter_count') || '5-8'
   })
+  const [tagsInput, setTagsInput] = useState('')
   const [outline, setOutline] = useState(null)
   const [chapters, setChapters] = useState([])
   const [generating, setGenerating] = useState(false)
@@ -30,6 +40,11 @@ function Generate() {
   const [historyId, setHistoryId] = useState(null)
   const [statusMessage, setStatusMessage] = useState('')
   const [showProviderModal, setShowProviderModal] = useState(false)
+  const [cards, setCards] = useState([])
+  const [cardId, setCardId] = useState('')
+  const [extraRequirements, setExtraRequirements] = useState('')
+  const [showCardPicker, setShowCardPicker] = useState(false)
+  const selectedCard = cards.find((c) => c.id === cardId) || null
   const activeModel = useStore((s) => s.activeModel)
   const navigate = useNavigate()
   
@@ -44,6 +59,10 @@ function Generate() {
         abortControllerRef.current.abort()
       }
     }
+  }, [])
+
+  useEffect(() => {
+    api.listCards().then((c) => setCards(Array.isArray(c) ? c : [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -117,12 +136,15 @@ function Generate() {
 
   const handleProgressEvent = (data) => {
     setStatusMessage(data.message || '')
-    
+
+    // 任意事件只要携带大纲就同步（outline_done 事件转瞬即逝，轮询可能错过）
+    if (data.outline) {
+      setOutline(data.outline)
+      setTotalChapters(data.outline.chapters?.length || 0)
+    }
+
     if (data.stage === 'outline' || data.stage === 'outline_done') {
-      if (data.outline) {
-        setOutline(data.outline)
-        setTotalChapters(data.outline.chapters?.length || 0)
-      }
+      // 大纲已在上方统一处理
     } else if (data.stage === 'chapter' || data.stage === 'chapter_done') {
       setCurrentChapter(data.current_chapter || 0)
       setTotalChapters(data.total_chapters || 0)
@@ -193,6 +215,9 @@ function Generate() {
           requirements: { ...requirements, language: locale },
           provider_id: activeModel?.provider_id || null,
           model_name: activeModel?.model_name || null,
+          card_id: cardId || null,
+          extra_requirements: extraRequirements,
+          tags: parseTags(tagsInput),
         }),
         signal
       })
@@ -292,10 +317,45 @@ function Generate() {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('generate.style')}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('generate.tags') === 'generate.tags' ? '标签（#标记，如 #小说 #悬疑，留空由 AI 生成）' : t('generate.tags')}
+            </label>
             <CustomInput
-              value={requirements.style}
-              onChange={(val) => setRequirements({...requirements, style: val})}
+              value={tagsInput}
+              onChange={(val) => setTagsInput(val)}
+              disabled={generating}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('generate.card') === 'generate.card' ? '写作卡' : t('generate.card')}
+              <a href="/cards" className="ml-2 text-xs text-indigo-600 hover:underline font-normal">
+                {t('generate.manageCards') === 'generate.manageCards' ? '管理' : t('generate.manageCards')}
+              </a>
+            </label>
+            {/* 点开弹出卡片选择器，而非下拉列表 */}
+            <button
+              onClick={() => !generating && setShowCardPicker(true)}
+              disabled={generating}
+              className="w-full px-3 py-2 text-sm text-left border border-gray-300 rounded-lg bg-white hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 transition-colors flex items-center justify-between disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              <span className={selectedCard ? 'text-gray-800' : 'text-gray-400'}>
+                {selectedCard ? `🃏 ${selectedCard.name}` : (t('generate.noCard') === 'generate.noCard' ? '不使用' : t('generate.noCard'))}
+              </span>
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10" />
+              </svg>
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('generate.extraReq') === 'generate.extraReq' ? '额外需求（可选）' : t('generate.extraReq')}
+            </label>
+            <CustomInput
+              value={extraRequirements}
+              onChange={(val) => setExtraRequirements(val)}
               disabled={generating}
             />
           </div>
@@ -356,6 +416,72 @@ function Generate() {
       )}
 
       <ProviderModal open={showProviderModal} onClose={() => setShowProviderModal(false)} />
+
+      {/* 写作卡选择弹窗：一堆可视化卡片 */}
+      {showCardPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 animate-overlay" onClick={() => setShowCardPicker(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-[720px] max-w-[94vw] max-h-[80vh] overflow-y-auto p-6 animate-modal">
+            <div className="flex items-center mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex-1">
+                {t('generate.pickCard') === 'generate.pickCard' ? '选择写作卡' : t('generate.pickCard')}
+              </h2>
+              <a href="/cards" className="text-xs text-indigo-600 hover:underline mr-4">
+                {t('generate.manageCards') === 'generate.manageCards' ? '管理' : t('generate.manageCards')}
+              </a>
+              <button onClick={() => setShowCardPicker(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {/* 不使用 */}
+              <button
+                onClick={() => { setCardId(''); setShowCardPicker(false) }}
+                className={`h-40 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-all ${
+                  cardId === ''
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                    : 'border-gray-300 text-gray-400 hover:border-indigo-300 hover:text-indigo-400'
+                }`}
+              >
+                <span className="text-3xl">∅</span>
+                <span className="text-sm">{t('generate.noCard') === 'generate.noCard' ? '不使用' : t('generate.noCard')}</span>
+              </button>
+
+              {cards.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => { setCardId(c.id); setShowCardPicker(false) }}
+                  className={`h-40 rounded-xl p-4 text-left flex flex-col shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg ${
+                    cardId === c.id
+                      ? 'ring-2 ring-indigo-500 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-300'
+                      : 'border border-gray-200 bg-gradient-to-br from-white to-indigo-50/40 hover:border-indigo-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-lg leading-none">🃏</span>
+                    <h3 className="font-semibold text-sm text-gray-800 leading-snug flex-1 line-clamp-2">{c.name}</h3>
+                  </div>
+                  {(c.tags || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {c.tags.slice(0, 3).map((tag) => (
+                        <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                  {c.extra_requirements && (
+                    <p className="text-[11px] text-gray-400 mt-2 line-clamp-2">{c.extra_requirements}</p>
+                  )}
+                  <div className="flex-1" />
+                  {c.builtin && (
+                    <span className="self-start text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                      {t('cards.builtin') === 'cards.builtin' ? '内置' : t('cards.builtin')}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -51,13 +51,16 @@ def load_app_config() -> dict:
 
 
 def setup_debug_logging() -> Path:
+    """打包（frozen/noconsole）模式：stdout/stderr 重定向到日志文件（否则为 None 会崩溃）。
+    开发模式：保留控制台输出，否则报错全被吞进日志文件，终端一片空白。"""
     log_dir = get_app_data_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "backend_debug.log"
-    try:
-        f = open(str(log_file), "a", encoding="utf-8")
-        sys.stdout = f
-        sys.stderr = f
-    except Exception:
-        pass
+    if getattr(sys, "frozen", False) or sys.stdout is None or sys.stderr is None:
+        try:
+            f = open(str(log_file), "a", encoding="utf-8", buffering=1)
+            sys.stdout = f
+            sys.stderr = f
+        except Exception:
+            pass
     return log_file

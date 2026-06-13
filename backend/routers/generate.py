@@ -19,6 +19,44 @@ class GenerateRequest(BaseModel):
     requirements: dict = {}
     provider_id: str | None = None
     model_name: str | None = None
+    card_id: str | None = None  # 写作卡
+    extra_requirements: str = ""  # 临时额外需求（与写作卡的额外需求合并）
+    tags: list[str] = []  # 用户自填标签；留空则用 AI 生成的标签
+
+
+def _load_card(card_id: str | None):
+    if not card_id:
+        return None
+    from models import WritingCard
+
+    db = SessionLocal()
+    try:
+        return db.query(WritingCard).filter(WritingCard.id == card_id).first()
+    finally:
+        db.close()
+
+
+def _card_context_for(card, query: str, request_extra: str = "") -> dict:
+    """组装写作卡上下文；无卡时返回空上下文。"""
+    if card is None:
+        return {
+            "card_context": "",
+            "extra_requirements": request_extra.strip(),
+            "has_continuation": False,
+        }
+    from services.rag_service import build_card_context
+
+    try:
+        ctx = build_card_context(card, query)
+    except Exception as e:
+        print(f"[RAG] build_card_context failed: {e}")
+        ctx = {"context_block": "", "extra_requirements": card.extra_requirements or "", "has_continuation": False}
+    extras = [x for x in (ctx.get("extra_requirements", ""), request_extra.strip()) if x]
+    return {
+        "card_context": ctx.get("context_block", ""),
+        "extra_requirements": "\n".join(extras),
+        "has_continuation": ctx.get("has_continuation", False),
+    }
 
 
 # 后台任务状态存储
@@ -39,6 +77,9 @@ def run_generation_task(
     language: str = "zh-CN",
     provider_id: str = None,
     model_name: str = None,
+    card_id: str = None,
+    extra_requirements: str = "",
+    user_tags: list = None,
 ):
     """在后台线程中运行生成任务"""
     from services.llm_service import generate_outline_sync, generate_chapter_sync
@@ -62,9 +103,19 @@ def run_generation_task(
             task_status[history_id]["status"] = "cancelled"
             return
 
+        # 写作卡：检索 RAG 上下文（大纲阶段以用户需求为检索词）
+        card = _load_card(card_id)
+        outline_ctx = _card_context_for(card, prompt, extra_requirements)
+
         # 生成大纲（耗时操作，无法中断）
         outline = generate_outline_sync(
-            prompt, requirements, provider_id=provider_id, model_name=model_name
+            prompt,
+            requirements,
+            provider_id=provider_id,
+            model_name=model_name,
+            card_context=outline_ctx["card_context"],
+            extra_requirements=outline_ctx["extra_requirements"],
+            has_continuation=outline_ctx["has_continuation"],
         )
 
         # 大纲生成后再次检查取消
@@ -108,11 +159,26 @@ def run_generation_task(
                 "current_chapter": i,
                 "total_chapters": total_chapters,
                 "chapter_title": chapter.get("title", ""),
+                # 附带大纲：SSE 轮询可能错过转瞬即逝的 outline_done 事件，
+                # 每个章节事件都带上，保证前端任何时刻都能同步到大纲
+                "outline": outline,
             }
+
+            # 写作卡：每章按「章节标题+概要」重新检索，上下文更精准
+            chapter_query = f"{chapter.get('title', '')} {chapter.get('summary', '')}".strip() or prompt
+            chapter_ctx = _card_context_for(card, chapter_query, extra_requirements)
 
             # 生成章节（耗时操作，无法中断）
             content = generate_chapter_sync(
-                outline, chapter, i, provider_id=provider_id, model_name=model_name
+                outline,
+                chapter,
+                i,
+                provider_id=provider_id,
+                model_name=model_name,
+                language=language,
+                card_context=chapter_ctx["card_context"],
+                extra_requirements=chapter_ctx["extra_requirements"],
+                has_continuation=chapter_ctx["has_continuation"],
             )
             chapters.append(content)
 
@@ -135,8 +201,10 @@ def run_generation_task(
                 "chapter_content": content,
             }
 
-        # 保存书籍
-        book_id = save_book_sync(db, outline, chapters, user_id, language)
+        # 保存书籍（标签 = 用户标签 + AI 标签，去重）
+        ai_tags = outline.get("tags") or []
+        merged_tags = list(dict.fromkeys([*(user_tags or []), *ai_tags]))
+        book_id = save_book_sync(db, outline, chapters, user_id, language, tags=merged_tags)
 
         # 更新历史记录状态
         db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update(
@@ -209,6 +277,9 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         language,
         request.provider_id,
         request.model_name,
+        request.card_id,
+        request.extra_requirements,
+        request.tags,
     )
 
     async def event_generator():

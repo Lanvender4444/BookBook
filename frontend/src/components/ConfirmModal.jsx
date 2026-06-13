@@ -25,16 +25,16 @@ function ConfirmModal({ isOpen, title, message, confirmText = '确定', cancelTe
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* 背景遮罩 */}
-      <div 
-        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 animate-overlay"
         onClick={onCancel}
       />
-      
+
       {/* 模态框 */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div 
+        <div
           ref={modalRef}
-          className="relative bg-white rounded-lg shadow-xl max-w-[90vw] sm:max-w-md w-full p-6 transform transition-all"
+          className="relative bg-white rounded-lg shadow-xl max-w-[90vw] sm:max-w-md w-full p-6 animate-modal"
           onClick={(e) => e.stopPropagation()}
         >
           {/* 标题 */}

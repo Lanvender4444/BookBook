@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from models import Book
 from config import BOOKS_DIR, ensure_books_dir
+from services.cover_gen import try_generate_cover
 
 WINDOWS_RESERVED = {
     'con', 'prn', 'aux', 'nul',
@@ -66,22 +67,48 @@ def _chapter_prefix(index: int, language: str = "zh-CN") -> str:
     else:
         return f"Chapter {index}: "
 
-def save_book(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN") -> str:
-    """保存书籍到本地文件和数据库"""
+_CJK_CHAR_RE = re.compile(r'[一-鿿぀-ヿ가-힯]')
+_LATIN_WORD_RE = re.compile(r'[a-zA-Zà-ÿÀ-Ÿа-яА-Я0-9]+')
+
+
+def count_words(text: str) -> int:
+    """统计字数：CJK 按字符计，其他按单词计。"""
+    plain = re.sub(r'[#*`>\[\]()_~-]', '', text)
+    cjk = len(_CJK_CHAR_RE.findall(plain))
+    latin = len(_LATIN_WORD_RE.findall(_CJK_CHAR_RE.sub(' ', plain)))
+    return cjk + latin
+
+
+def _do_save_book(
+    db: Session,
+    outline: dict,
+    chapters: list,
+    user_id: str,
+    language: str = "zh-CN",
+    tags: list = None,
+) -> str:
     book_id = str(uuid.uuid4())  # 完整 UUID
-    
+
     # 生成 Markdown 内容
     md_content = f"# {outline['title']}\n\n"
     md_content += f"{outline['description']}\n\n---\n\n"
-    
+
     for i, (chapter_data, content) in enumerate(zip(outline['chapters'], chapters)):
         md_content += f"## {_chapter_prefix(i+1, language)}{chapter_data['title']}\n\n{content}\n\n"
-    
+
     # 保存到本地文件
     filepath = get_book_filepath(book_id, outline['title'])
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(md_content)
-    
+
+    # 标签：调用方传入（用户标签 + AI 标签合并），兜底取大纲里的 AI 标签
+    final_tags = tags if tags else outline.get("tags") or []
+    if not isinstance(final_tags, list):
+        final_tags = []
+    # 统一规范：去掉用户/AI 可能带的 # 前缀，存纯文字（展示层负责加 #）
+    final_tags = [str(t).strip().lstrip("#").strip() for t in final_tags]
+    final_tags = [t for t in final_tags if t][:10]
+
     # 保存到数据库
     book = Book(
         id=book_id,
@@ -91,44 +118,23 @@ def save_book(db: Session, outline: dict, chapters: list, user_id: str, language
         file_path=str(filepath),
         author_id=user_id,
         source="local",
-        language=language
+        language=language,
+        tags=final_tags,
+        word_count=count_words(md_content),
     )
     db.add(book)
     db.commit()
-    
+
     return book_id
 
-def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN") -> str:
+
+def save_book(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN", tags: list = None) -> str:
+    """保存书籍到本地文件和数据库"""
+    return _do_save_book(db, outline, chapters, user_id, language, tags)
+
+def save_book_sync(db: Session, outline: dict, chapters: list, user_id: str, language: str = "zh-CN", tags: list = None) -> str:
     """同步版本的书籍保存，用于后台线程"""
-    book_id = str(uuid.uuid4())  # 完整 UUID
-    
-    # 生成 Markdown 内容
-    md_content = f"# {outline['title']}\n\n"
-    md_content += f"{outline['description']}\n\n---\n\n"
-    
-    for i, (chapter_data, content) in enumerate(zip(outline['chapters'], chapters)):
-        md_content += f"## {_chapter_prefix(i+1, language)}{chapter_data['title']}\n\n{content}\n\n"
-    
-    # 保存到本地文件
-    filepath = get_book_filepath(book_id, outline['title'])
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(md_content)
-    
-    # 保存到数据库
-    book = Book(
-        id=book_id,
-        title=outline['title'],
-        description=outline['description'],
-        outline=outline,
-        file_path=str(filepath),
-        author_id=user_id,
-        source="local",
-        language=language
-    )
-    db.add(book)
-    db.commit()
-    
-    return book_id
+    return _do_save_book(db, outline, chapters, user_id, language, tags)
 
 def save_p2p_book(db: Session, book_data: dict, peer_id: str) -> str:
     """保存 P2P 接收的书籍"""
@@ -273,7 +279,7 @@ def export_to_txt(md_content: str) -> bytes:
     return text.strip().encode('utf-8')
 
 
-def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
+def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN", book_id: str = "") -> bytes:
     """导出为 EPUB"""
     from ebooklib import epub
 
@@ -291,7 +297,18 @@ def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN"
     if description:
         book.add_metadata('DC', 'description', html.escape(description))
 
-    spine_items = ['nav']
+    # 封面：生成算法封面并设为 EPUB 封面（阅读器会显示在首页/书架）
+    cover_bytes = try_generate_cover(book_title, book_id)
+    has_cover = False
+    if cover_bytes:
+        try:
+            book.set_cover("cover.png", cover_bytes)
+            has_cover = True
+        except Exception as e:
+            print(f"[EPUB] set_cover failed: {e}")
+
+    # 封面页放在最前，其次是导航
+    spine_items = (['cover', 'nav'] if has_cover else ['nav'])
     toc_items = []
 
     style = '''
@@ -343,7 +360,7 @@ def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN"
     return buffer.read()
 
 
-def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
+def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN", book_id: str = "") -> bytes:
     """导出为 Word (.docx)"""
     from docx import Document
     from docx.shared import Pt, Inches
@@ -367,6 +384,18 @@ def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN"
     heading2_style = doc.styles['Heading 2']
     heading2_style.font.size = Pt(16)
     heading2_style.font.bold = True
+
+    # 封面页：整页居中的封面图，单独成页
+    cover_bytes = try_generate_cover(book_title, book_id)
+    if cover_bytes:
+        try:
+            from docx.enum.text import WD_BREAK
+            cover_para = doc.add_paragraph()
+            cover_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            cover_para.add_run().add_picture(io.BytesIO(cover_bytes), width=Inches(5.0))
+            doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        except Exception as e:
+            print(f"[DOCX] add cover failed: {e}")
 
     doc.add_heading(book_title, level=1)
 
@@ -427,13 +456,13 @@ def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN"
     return buffer.read()
 
 
-def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
+def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN", book_id: str = "") -> bytes:
     """导出为 PDF（使用 reportlab，纯 Python 无系统依赖）"""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Image
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.fonts import addMapping
@@ -484,6 +513,24 @@ def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN")
     )
 
     story = []
+
+    # 封面页：整页封面图，独立成页
+    cover_bytes = try_generate_cover(book_title, book_id)
+    if cover_bytes:
+        try:
+            avail_w = doc.width
+            avail_h = doc.height
+            img_w = avail_w
+            img_h = img_w * 800 / 600
+            if img_h > avail_h:
+                img_h = avail_h
+                img_w = img_h * 600 / 800
+            cover_img = Image(io.BytesIO(cover_bytes), width=img_w, height=img_h)
+            cover_img.hAlign = 'CENTER'
+            story.append(cover_img)
+            story.append(PageBreak())
+        except Exception as e:
+            print(f"[PDF] add cover failed: {e}")
 
     story.append(Paragraph(_pdf_escape(book_title), title_style))
     story.append(Spacer(1, 6))
