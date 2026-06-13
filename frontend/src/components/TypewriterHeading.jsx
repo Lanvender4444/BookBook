@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import useStore from '../store';
 
 /**
  * TypewriterHeading - 带打字机特效、微弱打字声音效和等宽字体的标题组件
@@ -44,9 +45,12 @@ export default function TypewriterHeading({ text, speed = 100, className = '', a
     };
 
     const playSound = (isDelete = false) => {
+      // 音效默认关闭，仅当用户在导航栏开启后才发声（实时读取最新值）
+      if (!useStore.getState().soundEnabled) return;
       if (!audioCtxRef.current) return;
       try {
         const ctx = audioCtxRef.current;
+        if (ctx.state === 'suspended') ctx.resume();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);

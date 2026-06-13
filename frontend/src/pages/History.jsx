@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import ConfirmModal from '../components/ConfirmModal'
+import TypewriterHeading from '../components/TypewriterHeading'
+
+const titleSpeed = (locale) => (['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 200 : 120)
 
 function History() {
   const { t, locale } = useI18n()
@@ -154,7 +157,7 @@ function History() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">{t('history.title')}</h1>
+        <TypewriterHeading text={t('history.title')} speed={titleSpeed(locale)} fontSize="1.875rem" className="text-gray-900" />
         <button
           onClick={() => navigate('/generate')}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2"

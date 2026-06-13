@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import ConfirmModal from '../components/ConfirmModal'
+import TypewriterHeading from '../components/TypewriterHeading'
+
+const titleSpeed = (locale) => (['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 200 : 120)
 
 function Network() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [activeTab, setActiveTab] = useState('share')
   const [shareTokens, setShareTokens] = useState([])
   const [shareForm, setShareForm] = useState({ book_id: '', expires_hours: 24 })
@@ -253,7 +256,7 @@ function Network() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">{t('network.title')}</h1>
+      <TypewriterHeading text={t('network.title')} speed={titleSpeed(locale)} fontSize="1.875rem" className="text-gray-900 mb-8" />
 
       {/* My Info Card */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">

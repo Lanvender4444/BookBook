@@ -420,8 +420,8 @@ function Generate() {
       {/* 写作卡选择弹窗：一堆可视化卡片 */}
       {showCardPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowCardPicker(false)} />
-          <div className="relative bg-white rounded-xl shadow-2xl w-[720px] max-w-[94vw] max-h-[80vh] overflow-y-auto p-6">
+          <div className="absolute inset-0 bg-black/40 animate-overlay" onClick={() => setShowCardPicker(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-[720px] max-w-[94vw] max-h-[80vh] overflow-y-auto p-6 animate-modal">
             <div className="flex items-center mb-4">
               <h2 className="text-lg font-semibold text-gray-900 flex-1">
                 {t('generate.pickCard') === 'generate.pickCard' ? '选择写作卡' : t('generate.pickCard')}

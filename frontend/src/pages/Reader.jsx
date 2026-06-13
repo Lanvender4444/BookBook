@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -40,6 +40,7 @@ const extractText = (children) => {
 function Reader() {
   const { t } = useI18n()
   const { id } = useParams()
+  const navigate = useNavigate()
   const [book, setBook] = useState(null)
   const [content, setContent] = useState('')
   const [activeId, setActiveId] = useState('')
@@ -128,46 +129,69 @@ function Reader() {
     return map
   }, [headingsList])
 
+  // 滚动联动：以正文容器的滚动位置为准，找出当前应高亮的标题。
+  // 比 IntersectionObserver 更可靠——任何滚动（含快速滚动/无标题进入观察带）都能正确更新左侧目录。
   useEffect(() => {
     if (headingsList.length === 0) return
 
     const mainContent = document.querySelector('main')
     if (!mainContent) return
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // ✅ Fix 2: 使用 ref 存 ticking，不受 observer 重建影响
-        if (!tickingRef.current) {
-          tickingRef.current = true
-          window.requestAnimationFrame(() => {
-            for (const entry of entries) {
-              if (entry.isIntersecting) {
-                setActiveId(entry.target.id)
-                break
-              }
-            }
-            tickingRef.current = false
-          })
+    const computeActive = () => {
+      const els = headingsList
+        .map((h) => document.getElementById(h.id))
+        .filter(Boolean)
+      if (els.length === 0) return
+
+      const mainRect = mainContent.getBoundingClientRect()
+      // 触发线：容器顶部下方 ~120px
+      const triggerLine = mainRect.top + 120
+
+      let currentId = els[0].id
+      for (const el of els) {
+        if (el.getBoundingClientRect().top <= triggerLine) {
+          currentId = el.id
+        } else {
+          break
         }
-      },
-      {
-        root: mainContent,
-        rootMargin: '-15% 0px -75% 0px',
-        threshold: 0
       }
-    )
 
-    const headingElements = headingsList
-      .map(({ id }) => document.getElementById(id))
-      .filter(Boolean)
+      // 滚到底部时高亮最后一个标题
+      if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 4) {
+        currentId = els[els.length - 1].id
+      }
 
-    headingElements.forEach((el) => observer.observe(el))
+      setActiveId((prev) => (prev === currentId ? prev : currentId))
+    }
+
+    const onScroll = () => {
+      if (!tickingRef.current) {
+        tickingRef.current = true
+        window.requestAnimationFrame(() => {
+          computeActive()
+          tickingRef.current = false
+        })
+      }
+    }
+
+    computeActive()
+    mainContent.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
 
     return () => {
-      headingElements.forEach((el) => observer.unobserve(el))
-      observer.disconnect()
+      mainContent.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
     }
   }, [headingsList])
+
+  // 左侧目录跟随：当前高亮项自动滚入侧栏视野
+  useEffect(() => {
+    if (!activeId) return
+    const navItem = document.querySelector(`[data-toc-id="${activeId}"]`)
+    if (navItem) {
+      navItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [activeId])
 
   const scrollToHeading = useCallback((headingId) => {
     setActiveId(headingId)
@@ -371,6 +395,7 @@ function Reader() {
             {headingsList.map((heading) => (
               <li key={heading.id}>
                 <button
+                  data-toc-id={heading.id}
                   onClick={() => scrollToHeading(heading.id)}
                   className={`w-full text-left py-1.5 px-2 rounded transition-colors ${getIndentClass(
                     heading.level
@@ -421,7 +446,7 @@ function Reader() {
               </svg>
             </button>
             {exportMenuOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
+              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 animate-dropdown-up">
                 {EXPORT_FORMATS.map((fmt) => (
                   <button
                     key={fmt.value}
@@ -446,7 +471,7 @@ function Reader() {
               用其他应用打开
             </button>
             {openMenuOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
+              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 animate-dropdown-up">
                 <button
                   onClick={() => handleOpenBook()}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -477,6 +502,17 @@ function Reader() {
         <div className="sticky top-0 bg-white/80 backdrop-blur-sm border-b border-gray-100 z-10">
           <div className="max-w-4xl mx-auto px-8 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
+              {/* 返回上一级（书库） */}
+              <button
+                onClick={() => navigate('/library')}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 transition-colors"
+                title="返回书库"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                <span className="hidden sm:inline">{t('reader.backToLibrary') === 'reader.backToLibrary' ? '返回书库' : t('reader.backToLibrary')}</span>
+              </button>
               {!sidebarOpen && (
                 <button
                   onClick={() => setSidebarOpen(true)}

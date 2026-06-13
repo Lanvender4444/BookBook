@@ -95,7 +95,7 @@ def export_book(book_id: str, format: str = "markdown", db: Session = Depends(ge
         )
     elif format == "epub":
         try:
-            data = export_to_epub(md_content, title=book.title, language=language)
+            data = export_to_epub(md_content, title=book.title, language=language, book_id=book_id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"EPUB generation failed: {str(e)}")
         return Response(
@@ -105,7 +105,7 @@ def export_book(book_id: str, format: str = "markdown", db: Session = Depends(ge
         )
     elif format == "docx":
         try:
-            data = export_to_docx(md_content, title=book.title, language=language)
+            data = export_to_docx(md_content, title=book.title, language=language, book_id=book_id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
         return Response(
@@ -115,7 +115,7 @@ def export_book(book_id: str, format: str = "markdown", db: Session = Depends(ge
         )
     elif format == "pdf":
         try:
-            data = export_to_pdf(md_content, title=book.title, language=language)
+            data = export_to_pdf(md_content, title=book.title, language=language, book_id=book_id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
         return Response(

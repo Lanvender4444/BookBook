@@ -2,8 +2,13 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../i18n'
 import BookCard from '../components/BookCard'
+import BookCover from '../components/BookCover'
 import ConfirmModal from '../components/ConfirmModal'
 import CustomInput from '../components/CustomInput'
+import TypewriterHeading from '../components/TypewriterHeading'
+
+// 标题打字机速度：CJK 慢一点更自然
+const titleSpeed = (locale) => (['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 200 : 120)
 
 const FALLBACK = {
   'library.search': '搜索书名 / 标签 / 语言…',
@@ -15,6 +20,8 @@ const FALLBACK = {
   'library.dateFrom': '从',
   'library.dateTo': '到',
   'library.viewGrid': '卡片视图',
+  'library.viewName': '名称视图',
+  'library.viewCover': '平铺视图',
   'library.viewShelf': '书架模式',
   'library.clearFilters': '清除筛选',
   'library.tagPickTitle': '选择标签',
@@ -109,11 +116,18 @@ function BookSpine({ book, onOpen, langLabel }) {
         </span>
       </button>
 
-      {/* 悬停资料卡（按位置自适应对齐） */}
-      <div className={`pointer-events-none absolute bottom-full ${tipPos} mb-4 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30`}>
+      {/* 悬停资料卡（按位置自适应对齐），带书封面 */}
+      <div className={`pointer-events-none absolute bottom-full ${tipPos} mb-4 w-64 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-30`}>
         <div className="bg-gray-900/95 text-white rounded-lg shadow-xl p-3 text-xs space-y-1.5">
-          <p className="font-semibold text-sm leading-snug">{book.title}</p>
-          {book.description && <p className="text-gray-300 line-clamp-3">{book.description}</p>}
+          <div className="flex gap-2.5">
+            <div className="w-16 flex-shrink-0 aspect-[3/4] rounded overflow-hidden shadow-md">
+              <BookCover book={book} rounded="rounded" />
+            </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="font-semibold text-sm leading-snug line-clamp-3">{book.title}</p>
+              {book.description && <p className="text-gray-300 line-clamp-3">{book.description}</p>}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-1">
             {(book.tags || []).slice(0, 6).map((tag) => (
               <span key={tag} className="px-1.5 py-0.5 rounded-full bg-white/15">#{tag}</span>
@@ -178,8 +192,55 @@ function BookShelf({ books, langName }) {
   )
 }
 
+// 名称视图：只显示书名的紧凑列表
+function BookNameList({ books }) {
+  const navigate = useNavigate()
+  return (
+    <div className="bg-white rounded-lg shadow divide-y divide-gray-100 overflow-hidden">
+      {books.map((book) => {
+        const [c1] = SPINE_COLORS[hashStr(book.title) % SPINE_COLORS.length]
+        return (
+          <button
+            key={book.id}
+            onClick={() => navigate(`/reader/${book.id}`)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-indigo-50/60 transition-colors"
+          >
+            <span className="w-1.5 h-5 rounded-full flex-shrink-0" style={{ background: c1 }} />
+            <span className="flex-1 min-w-0 truncate text-gray-800 font-medium">{book.title}</span>
+            {book.word_count ? (
+              <span className="text-xs text-gray-400 flex-shrink-0">{fmtWords(book.word_count)} 字</span>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// 平铺视图：只显示书封面，悬停浮现书名
+function BookCoverWall({ books }) {
+  const navigate = useNavigate()
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      {books.map((book) => (
+        <button
+          key={book.id}
+          onClick={() => navigate(`/reader/${book.id}`)}
+          className="group relative aspect-[3/4] rounded-lg overflow-hidden shadow hover:shadow-xl transition-all hover:-translate-y-1"
+          title={book.title}
+        >
+          <BookCover book={book} rounded="rounded-lg" />
+          <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-white text-xs font-medium line-clamp-2 text-left block">{book.title}</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function Library() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const tt = useCallback((key) => {
     const v = t(key)
     return v === key ? (FALLBACK[key] ?? key) : v
@@ -347,7 +408,7 @@ function Library() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">{t('library.title')}</h1>
+        <TypewriterHeading text={t('library.title')} speed={titleSpeed(locale)} fontSize="1.875rem" className="text-gray-900" />
         <button
           onClick={() => setShowSettings(!showSettings)}
           className="text-gray-600 hover:text-indigo-600 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -414,7 +475,7 @@ function Library() {
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
             />
             {showSuggest && suggestions && (suggestions.titles.length || suggestions.tags.length || suggestions.langs.length) > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-40 overflow-hidden max-h-80 overflow-y-auto">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-40 overflow-hidden max-h-80 overflow-y-auto animate-dropdown">
                 {suggestions.tags.length > 0 && (
                   <div className="p-2 border-b border-gray-100">
                     <p className="text-[10px] text-gray-400 uppercase mb-1 px-1">{tt('library.sugTag')}</p>
@@ -480,7 +541,7 @@ function Library() {
               🌐 {selectedLangs.length ? `${tt('library.langsBtn')} (${selectedLangs.length})` : tt('library.allLangs')}
             </button>
             {showLangMenu && (
-              <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-40 p-2">
+              <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-40 p-2 animate-dropdown">
                 <div className="flex gap-2 px-1 pb-2 border-b border-gray-100 mb-1">
                   <button onClick={() => setSelectedLangs([...allLangs])} className="text-xs text-indigo-600 hover:underline">{tt('library.selectAll')}</button>
                   <button onClick={() => setSelectedLangs([])} className="text-xs text-gray-500 hover:underline">{tt('library.clearSel')}</button>
@@ -554,27 +615,31 @@ function Library() {
         </div>
 
         <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-          <button
-            onClick={() => setView('grid')}
-            className={`px-4 py-2 text-sm transition-colors ${
-              view === 'grid' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {tt('library.viewGrid')}
-          </button>
-          <button
-            onClick={() => setView('shelf')}
-            className={`px-4 py-2 text-sm transition-colors ${
-              view === 'shelf' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            📚 {tt('library.viewShelf')}
-          </button>
+          {[
+            { key: 'grid', label: tt('library.viewGrid') },
+            { key: 'name', label: tt('library.viewName') },
+            { key: 'cover', label: tt('library.viewCover') },
+            { key: 'shelf', label: tt('library.viewShelf') },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              className={`px-4 py-2 text-sm transition-colors ${
+                view === key ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
       {view === 'shelf' ? (
         filteredBooks.length > 0 && <BookShelf books={filteredBooks} langName={langName} />
+      ) : view === 'name' ? (
+        <BookNameList books={filteredBooks} />
+      ) : view === 'cover' ? (
+        <BookCoverWall books={filteredBooks} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredBooks.map(book => (
@@ -592,8 +657,8 @@ function Library() {
       {/* 标签选择弹窗：搜索 + 多选 */}
       {showTagModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowTagModal(false)} />
-          <div className="relative bg-white rounded-xl shadow-2xl w-[520px] max-w-[92vw] max-h-[70vh] flex flex-col p-5">
+          <div className="absolute inset-0 bg-black/40 animate-overlay" onClick={() => setShowTagModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-[520px] max-w-[92vw] max-h-[70vh] flex flex-col p-5 animate-modal">
             <div className="flex items-center mb-3">
               <h2 className="text-lg font-semibold text-gray-900 flex-1">{tt('library.tagPickTitle')}</h2>
               <button onClick={() => setShowTagModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>

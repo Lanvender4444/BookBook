@@ -22,3 +22,42 @@ body {
   border-right: 3px solid #3b82f6;
   animation: blink 0.75s step-end infinite;
 }
+
+/* ---------- 弹窗 / 下拉过渡动画 ---------- */
+/* 遮罩淡入 */
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-overlay {
+  animation: overlayFadeIn 0.18s ease-out;
+}
+
+/* 模态框：淡入 + 轻微放大上浮 */
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-modal {
+  animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 下拉菜单：从顶部展开淡入 */
+@keyframes dropdownIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-dropdown {
+  animation: dropdownIn 0.15s ease-out;
+  transform-origin: top;
+}
+
+/* 由下往上展开（用于贴底部弹出的菜单，如阅读器导出菜单） */
+@keyframes dropdownUpIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-dropdown-up {
+  animation: dropdownUpIn 0.15s ease-out;
+  transform-origin: bottom;
+}

@@ -149,31 +149,68 @@ const PATTERNS = [patternCircles, patternStripes, patternTriangles, patternGrid,
 
 function titleCollage(title, r, p, W, H) {
   const els = []
-  const t = (title || '无题').slice(0, 16)
+  const raw = (title || '无题').trim()
   // CJK 逐字拼贴；拉丁文按词
-  const isCJK = /[一-鿿぀-ヿ가-힯]/.test(t)
-  const units = isCJK ? [...t] : t.split(/\s+/).filter(Boolean)
-  const maxUnits = isCJK ? 10 : 5
-  const shown = units.slice(0, maxUnits)
+  const isCJK = /[一-鿿぀-ヿ가-힯]/.test(raw)
+  let units = isCJK ? [...raw] : raw.split(/\s+/).filter(Boolean)
 
-  const bandTop = H * 0.46
-  const bandH = H * 0.4
-  const perRow = isCJK ? Math.min(shown.length, shown.length > 4 ? 4 : shown.length) : 1
-  const rows = Math.ceil(shown.length / perRow)
+  // 仅在极长时才截断，尽量完整显示（字号会随长度自适应缩小）
+  const MAX = isCJK ? 24 : 10
+  const truncated = units.length > MAX
+  if (truncated) units = units.slice(0, MAX)
+  if (units.length === 0) units = ['?']
+  const n = units.length
 
-  shown.forEach((u, i) => {
-    const row = Math.floor(i / perRow)
-    const col = i % perRow
-    const cellW = W / perRow
-    const cx = cellW * col + cellW / 2 + (r() - 0.5) * 10
-    const cy = bandTop + (bandH / rows) * row + (bandH / rows) / 2 + (r() - 0.5) * 8
-    const base = isCJK ? Math.min(cellW * 0.62, bandH / rows * 0.7) : Math.min((W * 0.86) / Math.max(u.length * 0.6, 1), 40)
-    const size = base * (0.8 + r() * 0.45)
-    const rot = (r() - 0.5) * 16
+  // 文字区域：纵向居中（约 28%~88%），留足排版空间
+  const areaX = W * 0.08
+  const areaW = W * 0.84
+  const areaTop = H * 0.30
+  const areaH = H * 0.58
+
+  // 根据字符数决定网格列数，使整块标题铺满区域且接近正方形
+  let cols, rows
+  if (isCJK) {
+    if (n <= 3) {
+      cols = n; rows = 1
+    } else {
+      const aspect = areaW / areaH
+      cols = Math.max(2, Math.min(n, Math.round(Math.sqrt(n * aspect))))
+      rows = Math.ceil(n / cols)
+    }
+  } else {
+    // 拉丁：一行一词
+    cols = 1
+    rows = n
+  }
+
+  const cellW = areaW / cols
+  const cellH = areaH / rows
+
+  // 基准字号：由格子尺寸（CJK）或最长单词宽度 + 行高（拉丁）共同决定，确保不溢出
+  let base
+  if (isCJK) {
+    base = Math.min(Math.min(cellW, cellH) * 0.82, H * 0.30)
+  } else {
+    const maxWordLen = Math.max(...units.map((w) => w.length), 1)
+    const byWidth = areaW / (maxWordLen * 0.58)
+    const byHeight = cellH * 0.8
+    base = Math.min(byWidth, byHeight, H * 0.18)
+  }
+
+  units.forEach((u, i) => {
+    const row = Math.floor(i / cols)
+    const col = i % cols
+    // 末行不足时整行居中
+    const itemsInRow = Math.min(cols, n - row * cols)
+    const rowStartX = areaX + (areaW - cellW * itemsInRow) / 2
+    const cx = rowStartX + cellW * col + cellW / 2 + (r() - 0.5) * cellW * 0.10
+    const cy = areaTop + cellH * row + cellH / 2 + (r() - 0.5) * cellH * 0.08
+    const size = base * (0.9 + r() * 0.2)
+    const rot = (r() - 0.5) * 12
     const font = FONTS[Math.floor(r() * FONTS.length)]
     const useAccent = r() > 0.62
     const fill = useAccent ? p.accents[Math.floor(r() * p.accents.length)] : p.text
-    const outlined = r() > 0.8
+    const outlined = r() > 0.82
 
     els.push(
       <text key={`tt${i}`} x={cx} y={cy}
@@ -190,15 +227,15 @@ function titleCollage(title, r, p, W, H) {
   })
 
   // 标题被截断时加省略号
-  if (units.length > maxUnits) {
+  if (truncated) {
     els.push(
-      <text key="ell" x={W / 2} y={bandTop + bandH + 8} fontSize={13} fill={p.text} opacity={0.7} textAnchor="middle">…</text>
+      <text key="ell" x={W / 2} y={areaTop + areaH + 12} fontSize={14} fill={p.text} opacity={0.7} textAnchor="middle">…</text>
     )
   }
   return els
 }
 
-function BookCover({ book, className = '', rounded = 'rounded-t-lg' }) {
+function BookCover({ book, className = '', rounded = 'rounded-t-lg', fit = 'slice' }) {
   const W = 300, H = 400
   const seed = hashStr(`${book?.title || ''}::${book?.id || ''}`)
   const r = rng(seed)
@@ -208,7 +245,7 @@ function BookCover({ book, className = '', rounded = 'rounded-t-lg' }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="xMidYMid slice"
+      preserveAspectRatio={fit === 'meet' ? 'xMidYMid meet' : 'xMidYMid slice'}
       className={`block w-full h-full ${rounded} ${className}`}
       role="img"
       aria-label={book?.title || ''}
@@ -221,8 +258,8 @@ function BookCover({ book, className = '', rounded = 'rounded-t-lg' }) {
       </defs>
       <rect width={W} height={H} fill={`url(#bg-${seed})`} />
       {pattern(r, p, W, H)}
-      {/* 标题区轻微压暗，保证文字可读 */}
-      <rect x={0} y={H * 0.42} width={W} height={H * 0.48} fill={p.bg[0]} opacity={0.35} />
+      {/* 标题区轻微压暗，保证文字可读（覆盖自适应文字区域） */}
+      <rect x={0} y={H * 0.26} width={W} height={H * 0.64} fill={p.bg[0]} opacity={0.32} />
       {titleCollage(book?.title, r, p, W, H)}
       {/* 书脊侧光 */}
       <rect x={0} y={0} width={10} height={H} fill="#000" opacity={0.18} />

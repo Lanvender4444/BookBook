@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { api } from '../api'
 import ConfirmModal from '../components/ConfirmModal'
+import TypewriterHeading from '../components/TypewriterHeading'
+
+const titleSpeed = (locale) => (['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 200 : 120)
 
 function Settings() {
   const { t, locale } = useI18n()
@@ -176,7 +179,7 @@ function Settings() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t('settings.title')}</h1>
+        <TypewriterHeading text={t('settings.title')} speed={titleSpeed(locale)} fontSize="1.5rem" className="text-gray-900" />
         <button
           onClick={handleMigrate}
           disabled={migrating}
@@ -330,8 +333,8 @@ function Settings() {
       })}
 
       {configuring && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setConfiguring(null)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-[90vw] sm:max-w-lg w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-overlay" onClick={() => setConfiguring(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-[90vw] sm:max-w-lg w-full p-6 animate-modal" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">
                 {t('settings.configure')} {configuring.name}

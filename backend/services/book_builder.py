@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from models import Book
 from config import BOOKS_DIR, ensure_books_dir
+from services.cover_gen import try_generate_cover
 
 WINDOWS_RESERVED = {
     'con', 'prn', 'aux', 'nul',
@@ -278,7 +279,7 @@ def export_to_txt(md_content: str) -> bytes:
     return text.strip().encode('utf-8')
 
 
-def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
+def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN", book_id: str = "") -> bytes:
     """导出为 EPUB"""
     from ebooklib import epub
 
@@ -296,7 +297,18 @@ def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN"
     if description:
         book.add_metadata('DC', 'description', html.escape(description))
 
-    spine_items = ['nav']
+    # 封面：生成算法封面并设为 EPUB 封面（阅读器会显示在首页/书架）
+    cover_bytes = try_generate_cover(book_title, book_id)
+    has_cover = False
+    if cover_bytes:
+        try:
+            book.set_cover("cover.png", cover_bytes)
+            has_cover = True
+        except Exception as e:
+            print(f"[EPUB] set_cover failed: {e}")
+
+    # 封面页放在最前，其次是导航
+    spine_items = (['cover', 'nav'] if has_cover else ['nav'])
     toc_items = []
 
     style = '''
@@ -348,7 +360,7 @@ def export_to_epub(md_content: str, title: str = "Book", language: str = "zh-CN"
     return buffer.read()
 
 
-def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
+def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN", book_id: str = "") -> bytes:
     """导出为 Word (.docx)"""
     from docx import Document
     from docx.shared import Pt, Inches
@@ -372,6 +384,18 @@ def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN"
     heading2_style = doc.styles['Heading 2']
     heading2_style.font.size = Pt(16)
     heading2_style.font.bold = True
+
+    # 封面页：整页居中的封面图，单独成页
+    cover_bytes = try_generate_cover(book_title, book_id)
+    if cover_bytes:
+        try:
+            from docx.enum.text import WD_BREAK
+            cover_para = doc.add_paragraph()
+            cover_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            cover_para.add_run().add_picture(io.BytesIO(cover_bytes), width=Inches(5.0))
+            doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        except Exception as e:
+            print(f"[DOCX] add cover failed: {e}")
 
     doc.add_heading(book_title, level=1)
 
@@ -432,13 +456,13 @@ def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN"
     return buffer.read()
 
 
-def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN") -> bytes:
+def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN", book_id: str = "") -> bytes:
     """导出为 PDF（使用 reportlab，纯 Python 无系统依赖）"""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Image
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.fonts import addMapping
@@ -489,6 +513,24 @@ def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN")
     )
 
     story = []
+
+    # 封面页：整页封面图，独立成页
+    cover_bytes = try_generate_cover(book_title, book_id)
+    if cover_bytes:
+        try:
+            avail_w = doc.width
+            avail_h = doc.height
+            img_w = avail_w
+            img_h = img_w * 800 / 600
+            if img_h > avail_h:
+                img_h = avail_h
+                img_w = img_h * 600 / 800
+            cover_img = Image(io.BytesIO(cover_bytes), width=img_w, height=img_h)
+            cover_img.hAlign = 'CENTER'
+            story.append(cover_img)
+            story.append(PageBreak())
+        except Exception as e:
+            print(f"[PDF] add cover failed: {e}")
 
     story.append(Paragraph(_pdf_escape(book_title), title_style))
     story.append(Spacer(1, 6))

@@ -126,44 +126,81 @@ def _pattern(layer_draw, r: random.Random, p):
 
 
 def _title_collage(img, draw, r: random.Random, p, title: str, font_path):
-    from PIL import ImageFont
+    from PIL import Image, ImageFont, ImageDraw
 
-    t = (title or "无题")[:16]
-    is_cjk = any("一" <= c <= "鿿" or "぀" <= c <= "ヿ" or "가" <= c <= "힯" for c in t)
-    units = list(t) if is_cjk else [w for w in t.split() if w]
-    units = units[: 10 if is_cjk else 5]
+    raw = (title or "无题").strip()
+    is_cjk = any("一" <= c <= "鿿" or "぀" <= c <= "ヿ" or "가" <= c <= "힯" for c in raw)
+    units = list(raw) if is_cjk else [w for w in raw.split() if w]
+
+    # 仅在极长时才截断，尽量完整显示（字号随长度自适应缩小）
+    max_units = 24 if is_cjk else 10
+    truncated = len(units) > max_units
+    if truncated:
+        units = units[:max_units]
     if not units:
         units = ["?"]
+    n = len(units)
 
-    band_top, band_h = H * 0.46, H * 0.4
-    per_row = min(len(units), 4) if is_cjk else 1
-    rows = math.ceil(len(units) / per_row)
+    # 文字区域：纵向居中（约 30%~88%）
+    area_x = W * 0.08
+    area_w = W * 0.84
+    area_top = H * 0.30
+    area_h = H * 0.58
+
+    # 根据字符数决定网格，使整块标题铺满区域且接近正方形
+    if is_cjk:
+        if n <= 3:
+            cols, rows = n, 1
+        else:
+            aspect = area_w / area_h
+            cols = max(2, min(n, round(math.sqrt(n * aspect))))
+            rows = math.ceil(n / cols)
+    else:
+        cols, rows = 1, n
+
+    cell_w = area_w / cols
+    cell_h = area_h / rows
+
+    # 基准字号：CJK 由格子尺寸决定；拉丁由最长单词宽度 + 行高决定，确保不溢出
+    if is_cjk:
+        base = min(min(cell_w, cell_h) * 0.82, H * 0.30)
+    else:
+        max_word_len = max((len(w) for w in units), default=1)
+        by_width = area_w / (max_word_len * 0.58)
+        by_height = cell_h * 0.8
+        base = min(by_width, by_height, H * 0.18)
 
     for i, u in enumerate(units):
-        row, col = divmod(i, per_row)
-        cell_w = W / per_row
-        cx = cell_w * col + cell_w / 2 + (r.random() - 0.5) * 18
-        cy = band_top + (band_h / rows) * row + (band_h / rows) / 2 + (r.random() - 0.5) * 14
-        base = min(cell_w * 0.6, band_h / rows * 0.66) if is_cjk else min(W * 0.84 / max(len(u) * 0.6, 1), 80)
-        size = int(base * (0.8 + r.random() * 0.45))
+        row, col = divmod(i, cols)
+        items_in_row = min(cols, n - row * cols)
+        row_start_x = area_x + (area_w - cell_w * items_in_row) / 2
+        cx = row_start_x + cell_w * col + cell_w / 2 + (r.random() - 0.5) * cell_w * 0.10
+        cy = area_top + cell_h * row + cell_h / 2 + (r.random() - 0.5) * cell_h * 0.08
+        size = max(8, int(base * (0.9 + r.random() * 0.2)))
         color = _hex_rgba(r.choice(p["accents"])) if r.random() > 0.62 else _hex_rgba(p["text"])
-        rot = (r.random() - 0.5) * 14
+        rot = (r.random() - 0.5) * 12
 
         try:
             font = ImageFont.truetype(font_path, size) if font_path else ImageFont.load_default()
         except Exception:
             font = ImageFont.load_default()
 
-        # 单字/词画到独立小图再旋转，贴回主图（拼贴感）
-        from PIL import Image
+        # 单字/词画到独立小图再旋转，贴回主图（拼贴感），文字在小图内居中
         pad = size
-        tile = Image.new("RGBA", (size * max(len(u), 1) + pad, size + pad), (0, 0, 0, 0))
-        td = __import__("PIL.ImageDraw", fromlist=["Draw"]).Draw(tile)
-        td.text((pad // 2, pad // 2), u, font=font, fill=color)
+        tile = Image.new("RGBA", (size * max(len(u), 1) + pad * 2, size + pad * 2), (0, 0, 0, 0))
+        td = ImageDraw.Draw(tile)
+        try:
+            bbox = td.textbbox((0, 0), u, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            tx = (tile.width - tw) / 2 - bbox[0]
+            ty = (tile.height - th) / 2 - bbox[1]
+        except Exception:
+            tx = ty = pad
+        td.text((tx, ty), u, font=font, fill=color)
         tile = tile.rotate(rot, expand=True, resample=Image.BICUBIC)
-        bbox = tile.getbbox()
-        if bbox:
-            tile = tile.crop(bbox)
+        crop = tile.getbbox()
+        if crop:
+            tile = tile.crop(crop)
         img.alpha_composite(tile, (int(cx - tile.width / 2), int(cy - tile.height / 2)))
 
 
@@ -184,9 +221,9 @@ def generate_cover_png(title: str, book_id: str = "") -> bytes:
     _pattern(ImageDraw.Draw(layer), r, p)
     img.alpha_composite(layer)
 
-    # 标题区压暗
-    shade = Image.new("RGBA", (W, int(H * 0.48)), _hex_rgba(p["bg"][0], 90))
-    img.alpha_composite(shade, (0, int(H * 0.42)))
+    # 标题区压暗（覆盖自适应文字区域）
+    shade = Image.new("RGBA", (W, int(H * 0.64)), _hex_rgba(p["bg"][0], 82))
+    img.alpha_composite(shade, (0, int(H * 0.26)))
 
     _title_collage(img, draw, r, p, title, _find_font())
 

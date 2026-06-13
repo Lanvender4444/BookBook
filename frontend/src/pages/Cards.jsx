@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { api } from '../api'
 import ConfirmModal from '../components/ConfirmModal'
+import TypewriterHeading from '../components/TypewriterHeading'
+
+const titleSpeed = (locale) => (['zh-CN', 'zh-TW', 'ja', 'ko'].includes(locale) ? 200 : 120)
 
 const CATEGORIES = ['writing_guide', 'style', 'reference', 'continuation']
 
@@ -280,8 +283,8 @@ function Modal({ open, onClose, children }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-2xl w-[640px] max-w-[92vw] max-h-[82vh] overflow-y-auto p-6">
+      <div className="absolute inset-0 bg-black/40 animate-overlay" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-2xl w-[640px] max-w-[92vw] max-h-[82vh] overflow-y-auto p-6 animate-modal">
         {children}
       </div>
     </div>
@@ -589,6 +592,7 @@ function CardPanel({ cards, sources, reload }) {
 
 function Cards() {
   const tt = useT()
+  const { locale } = useI18n()
   const [tab, setTab] = useState('cards')
   const [sources, setSources] = useState([])
   const [cards, setCards] = useState([])
@@ -617,7 +621,7 @@ function Cards() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{tt('cards.title')}</h1>
+      <TypewriterHeading text={tt('cards.title')} speed={titleSpeed(locale)} fontSize="1.5rem" className="text-gray-900 mb-1" />
       <p className="text-sm text-gray-500 mb-6">{tt('cards.subtitle')}</p>
 
       <div className="flex gap-1 border-b border-gray-200 mb-6">

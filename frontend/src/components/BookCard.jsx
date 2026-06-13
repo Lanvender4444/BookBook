@@ -27,8 +27,9 @@ function BookCard({ book, onDelete }) {
 
   return (
     <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
-      <div className="h-40 rounded-t-lg overflow-hidden">
-        <BookCover book={book} />
+      {/* 完整显示封面（3:4 不裁切） */}
+      <div className="aspect-[3/4] rounded-t-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+        <BookCover book={book} fit="meet" />
       </div>
       
       <div className="p-4">
