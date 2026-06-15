@@ -43,7 +43,9 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../config.json": "config.json"
+      "../../config.json": "config.json",
+      "../src/assets/fonts/JetBrainsMono-OFL.txt": "licenses/JetBrainsMono-OFL.txt",
+      "../src/assets/fonts/ShareTechMono-OFL.txt": "licenses/ShareTechMono-OFL.txt"
     }
   }
 }
