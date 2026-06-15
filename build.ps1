@@ -19,6 +19,7 @@ if (-not (Get-Command pyinstaller -ErrorAction SilentlyContinue)) {
     Write-Host "pyinstaller 未安装，正在安装..." -ForegroundColor Yellow
     pip install pyinstaller
 }
+
 pyinstaller --onefile --noconsole --name backend main.py
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "PyInstaller 打包失败" }
 Pop-Location
