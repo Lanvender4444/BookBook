@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;700&display=swap');
+/* 本地自托管字体（离线可用，无需联网 Google Fonts） */
+@import './assets/fonts/fonts.css';
 
 @tailwind base;
 @tailwind components;

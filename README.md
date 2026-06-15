@@ -136,6 +136,15 @@ BookBook 支持以下语言的界面显示：
 **防火墙设置：**
 如需使用 P2P 功能，请确保端口 47832（UDP）和 47833（TCP）在局域网内开放。
 
+## 字体
+
+本项目界面内置以下开源字体，均遵循 **SIL Open Font License 1.1 (OFL-1.1)**：
+
+| 字体 | 版权 / 作者 | 许可证 | 来源 |
+|------|------------|--------|------|
+| **JetBrains Mono** | Copyright 2020 The JetBrains Mono Project Authors | OFL-1.1 | https://github.com/JetBrains/JetBrainsMono |
+| **Share Tech Mono** | Copyright 2012 Carrois Type Design, Ralph du Carrois | OFL-1.1 | https://github.com/google/fonts/tree/main/ofl/sharetechmono |
+
 ----
 
 ![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8D8?logo=tauri&logoColor=white)
