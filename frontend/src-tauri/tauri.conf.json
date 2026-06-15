@@ -29,6 +29,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "Lanvender4444",
+    "shortDescription": "BookBook 电子书生成器",
+    "longDescription": "BookBook —— AI 电子书生成与阅读工具",
     "externalBin": [
       "binaries/backend"
     ],
