@@ -14,3 +14,8 @@ python-docx>=1.1.0
 reportlab>=4.0.0
 pypdf>=4.0.0
 python-multipart>=0.0.9
+# 向量数据库：Milvus 客户端（全平台可装）
+pymilvus>=2.4.0
+# Milvus Lite 嵌入式引擎：仅 Linux/macOS 有 wheel，用环境标记避免在 Windows 上安装失败。
+# Windows 用户请改连 Milvus 服务（设 MILVUS_URI=http://host:19530），或回落 SQLite 向量。
+milvus-lite>=2.4.0 ; platform_system != "Windows"

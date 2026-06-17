@@ -18,6 +18,7 @@ import httpx
 from database import SessionLocal
 from models import KnowledgeSource, KnowledgeChunk, ActiveModel, ProviderConfig
 from config import PROVIDERS
+from services import vector_store
 
 CATEGORIES = ("writing_guide", "style", "reference", "continuation")
 
@@ -310,7 +311,9 @@ def index_source(source_id: str) -> dict:
             if not chunks:
                 raise ExtractError("文档内容为空")
 
+            # 清旧块（SQLite 文本/元数据）与旧向量（Milvus）
             db.query(KnowledgeChunk).filter(KnowledgeChunk.source_id == source_id).delete()
+            vector_store.delete_by_source(source_id)
 
             embedded = None
             try:
@@ -319,17 +322,40 @@ def index_source(source_id: str) -> dict:
                 # embedding 失败不致命，降级 BM25
                 print(f"[RAG] embedding failed, fallback to BM25: {e}")
 
+            # 先建 SQLite 块（文本 + 元数据，BM25 与命中回显都靠它），flush 拿自增主键
+            rows = []
             for i, chunk in enumerate(chunks):
                 row = KnowledgeChunk(source_id=source_id, chunk_index=i, text=chunk)
-                if embedded:
-                    row.embedding = _vec_to_bytes(embedded[0][i])
-                    row.embedding_model = embedded[1]
                 db.add(row)
+                rows.append(row)
+            db.flush()
+
+            status = "bm25"
+            if embedded:
+                vectors, model = embedded
+                wrote_milvus = False
+                if vector_store.available():
+                    mrows = [
+                        {"id": rows[i].id, "source_id": source_id, "vector": list(vectors[i])}
+                        for i in range(len(rows))
+                    ]
+                    wrote_milvus = vector_store.upsert(mrows)
+                if wrote_milvus:
+                    # 向量入 Milvus；SQLite 仅记录用的模型，不再冗余存 bytes
+                    for row in rows:
+                        row.embedding_model = model
+                    status = "ready"
+                else:
+                    # Milvus 不可用/写失败 → 回落把向量存进 SQLite（原暴力检索路径）
+                    for i, row in enumerate(rows):
+                        row.embedding = _vec_to_bytes(vectors[i])
+                        row.embedding_model = model
+                    status = "ready"
 
             source.chunk_count = len(chunks)
-            source.index_status = "ready" if embedded else "bm25"
+            source.index_status = status
             db.commit()
-            return {"status": source.index_status, "chunks": len(chunks)}
+            return {"status": status, "chunks": len(chunks)}
         except Exception as e:
             source.index_status = "failed"
             source.index_error = str(e)
@@ -342,7 +368,9 @@ def index_source(source_id: str) -> dict:
 # ---------------------------------------------------------------- 检索
 
 def retrieve(query: str, source_ids: list[str], top_k: int = 5) -> list[dict]:
-    """跨多个知识源检索 top_k 相关分块。优先向量；任一分块无向量则整体 BM25。"""
+    """跨多个知识源检索 top_k 相关分块。
+    检索后端优先级：Milvus 向量检索 → SQLite 内嵌向量暴力余弦 → BM25 关键词。
+    """
     if not source_ids:
         return []
     db = SessionLocal()
@@ -356,6 +384,36 @@ def retrieve(query: str, source_ids: list[str], top_k: int = 5) -> list[dict]:
         if not chunks:
             return []
 
+        def _fmt(score, c, s):
+            return {
+                "source_id": c.source_id,
+                "source_name": s.name,
+                "category": s.category,
+                "prompt": s.prompt,
+                "text": c.text,
+                "score": round(float(score), 4),
+            }
+
+        # 1) 优先 Milvus 向量检索（向量在 Milvus，按 chunk_id 映射回 SQLite 文本/元数据）
+        if vector_store.available():
+            try:
+                qres = embed_texts([query])
+                if qres:
+                    qvec = qres[0][0]
+                    hits = vector_store.search(qvec, source_ids, top_k)
+                    # 有命中即认为 Milvus 已应答（即便过滤后为空，也不再回落，避免重复检索）；
+                    # 仅当 Milvus 完全无命中（如该源是 SQLite 旧索引）才继续回落。
+                    if hits:
+                        cmap = {c.id: (c, s) for c, s in chunks}
+                        return [
+                            _fmt(sim, *cmap[cid])
+                            for cid, sim in hits
+                            if cid in cmap and sim > 0
+                        ]
+            except Exception as e:
+                print(f"[RAG] milvus search failed, fallback: {e}")
+
+        # 2) 回落：SQLite 内嵌向量暴力余弦
         use_vectors = all(c.embedding is not None for c, _ in chunks)
         scores = None
         if use_vectors:
@@ -366,22 +424,13 @@ def retrieve(query: str, source_ids: list[str], top_k: int = 5) -> list[dict]:
                     scores = [_cosine(qvec, _bytes_to_vec(c.embedding)) for c, _ in chunks]
             except Exception as e:
                 print(f"[RAG] query embedding failed, fallback to BM25: {e}")
+
+        # 3) 再回落：BM25 关键词
         if scores is None:
             scores = _bm25_rank(query, [c.text for c, _ in chunks])
 
         ranked = sorted(zip(scores, chunks), key=lambda x: x[0], reverse=True)[:top_k]
-        return [
-            {
-                "source_id": c.source_id,
-                "source_name": s.name,
-                "category": s.category,
-                "prompt": s.prompt,
-                "text": c.text,
-                "score": round(float(score), 4),
-            }
-            for score, (c, s) in ranked
-            if score > 0
-        ]
+        return [_fmt(score, c, s) for score, (c, s) in ranked if score > 0]
     finally:
         db.close()
 

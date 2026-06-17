@@ -46,6 +46,7 @@ pyinstaller --onefile --noconsole --name backend `
     --collect-all ebooklib `
     --collect-all reportlab `
     --collect-all PIL `
+    --collect-all pymilvus `
     --hidden-import uvicorn `
     --clean --noconfirm `
     main.py

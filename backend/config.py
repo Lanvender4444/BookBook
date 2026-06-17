@@ -18,6 +18,24 @@ def ensure_books_dir():
     Path(BOOKS_DIR).mkdir(parents=True, exist_ok=True)
 
 
+# 向量库（Milvus）配置：
+# - Windows：Milvus Lite 无 wheel，改用本机 Docker 跑的 Milvus 服务（默认 127.0.0.1:19530），
+#   由 services.milvus_manager 在启动时自动拉起容器（需已装 Docker Desktop）。
+# - Linux/macOS：默认 Milvus Lite（嵌入式本地文件，无需 Docker）。
+# 均可用环境变量 MILVUS_URI 覆盖（如指向远程 Milvus 服务）。
+_DEFAULT_MILVUS_URI = (
+    "http://127.0.0.1:19530"
+    if sys.platform == "win32"
+    else str(get_app_data_dir() / "data" / "milvus_lite.db")
+)
+MILVUS_URI = os.getenv("MILVUS_URI", _DEFAULT_MILVUS_URI)
+# 自动用 Docker 拉起本机 Milvus（仅当 MILVUS_URI 指向本机 http 服务时生效）
+MILVUS_AUTOSTART = os.getenv("MILVUS_AUTOSTART", "true").lower() == "true"
+# Docker 镜像与容器名（镜像可按需覆盖到 v2.6.x / v3.0-beta 等）
+MILVUS_IMAGE = os.getenv("MILVUS_IMAGE", "milvusdb/milvus:v2.5.4")
+MILVUS_CONTAINER = os.getenv("MILVUS_CONTAINER", "milvus-standalone")
+
+
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower()
 LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-4-20250514")
 
