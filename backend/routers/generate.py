@@ -22,6 +22,9 @@ class GenerateRequest(BaseModel):
     card_id: str | None = None  # 写作卡
     extra_requirements: str = ""  # 临时额外需求（与写作卡的额外需求合并）
     tags: list[str] = []  # 用户自填标签；留空则用 AI 生成的标签
+    enable_research: bool = False  # 开启 ReAct 研究循环（每章决定是否 web 搜索 / 查知识库）
+    enable_rich: bool = True  # 写作时内容工具：允许模型在正文插入表格 / SVG 图
+    enable_stub: bool = False  # 跨章占位 Stub：前向引用与自动跳转链接
 
 
 def _load_card(card_id: str | None):
@@ -34,6 +37,16 @@ def _load_card(card_id: str | None):
         return db.query(WritingCard).filter(WritingCard.id == card_id).first()
     finally:
         db.close()
+
+
+def _card_source_ids(card) -> list:
+    """写作卡关联的全部知识源 id（供 ReAct 的 search_knowledge 工具检索）。"""
+    if card is None:
+        return []
+    ids = []
+    for field in ("writing_guide_ids", "style_ids", "reference_ids", "continuation_ids"):
+        ids.extend(getattr(card, field, None) or [])
+    return list(dict.fromkeys(ids))
 
 
 def _card_context_for(card, query: str, request_extra: str = "") -> dict:
@@ -80,9 +93,12 @@ def run_generation_task(
     card_id: str = None,
     extra_requirements: str = "",
     user_tags: list = None,
+    enable_research: bool = False,
+    enable_rich: bool = True,
+    enable_stub: bool = False,
 ):
     """在后台线程中运行生成任务"""
-    from services.llm_service import generate_outline_sync, generate_chapter_sync
+    from services.llm_service import generate_outline_sync, generate_chapter_sync, get_llm_service
     from services.book_builder import save_book_sync
 
     db = SessionLocal()
@@ -139,6 +155,9 @@ def run_generation_task(
             "outline": outline,
         }
 
+        # 跨章占位 stub 的全局待办列表（贯穿所有章节）
+        open_stubs = []
+
         chapters = []
         total_chapters = len(outline["chapters"])
 
@@ -168,6 +187,49 @@ def run_generation_task(
             chapter_query = f"{chapter.get('title', '')} {chapter.get('summary', '')}".strip() or prompt
             chapter_ctx = _card_context_for(card, chapter_query, extra_requirements)
 
+            # ReAct 研究循环：每章先思考是否需要 web 搜索 / 查本地知识库
+            research_notes = ""
+            if enable_research:
+                try:
+                    from services.react_agent import research_chapter
+                    from services.agent_tools import web_search_configured
+
+                    def _on_research(ev):
+                        # 把研究过程写进进度，前端可展示「思考/搜索中」
+                        task_status[history_id]["progress"] = {
+                            "stage": "research",
+                            "message": ev.get("message", ""),
+                            "research_stage": ev.get("stage"),
+                            "tool": ev.get("tool"),
+                            "current_chapter": i,
+                            "total_chapters": total_chapters,
+                            "chapter_title": chapter.get("title", ""),
+                            "outline": outline,
+                        }
+
+                    svc = get_llm_service(provider_id, model_name)
+                    research_notes = research_chapter(
+                        svc, outline, chapter, i,
+                        language_name=language,
+                        source_ids=_card_source_ids(card),
+                        web_available=web_search_configured(),
+                        knowledge_available=bool(_card_source_ids(card)),
+                        on_event=_on_research,
+                    )
+                except Exception as e:
+                    print(f"[ReAct] research failed: {e}")
+
+            # 研究笔记并入章节上下文
+            merged_card_context = chapter_ctx["card_context"]
+            if research_notes:
+                merged_card_context = (merged_card_context + "\n\n" + research_notes).strip()
+
+            # stub 说明 + 当前待兑现列表（注入本章 prompt）
+            stub_note = ""
+            if enable_stub:
+                from services.stub_service import stubs_prompt
+                stub_note = stubs_prompt(open_stubs)
+
             # 生成章节（耗时操作，无法中断）
             content = generate_chapter_sync(
                 outline,
@@ -176,10 +238,22 @@ def run_generation_task(
                 provider_id=provider_id,
                 model_name=model_name,
                 language=language,
-                card_context=chapter_ctx["card_context"],
+                card_context=merged_card_context,
                 extra_requirements=chapter_ctx["extra_requirements"],
                 has_continuation=chapter_ctx["has_continuation"],
+                enable_rich=enable_rich,
+                stub_note=stub_note,
+                # 开 stub 时延迟 content_tools，先处理 stub 再渲染表格/图
+                post_process=not enable_stub,
             )
+
+            if enable_stub:
+                from services.stub_service import process_chapter as _process_stub
+                content = _process_stub(content, i, open_stubs)
+                if enable_rich:
+                    from services.content_tools import apply_content_tools
+                    content = apply_content_tools(content)
+
             chapters.append(content)
 
             # 章节完成后检查取消
@@ -200,6 +274,11 @@ def run_generation_task(
                 "chapter_title": chapter.get("title", ""),
                 "chapter_content": content,
             }
+
+        # 缝合跨章 stub：已兑现的在源处加跳转链接，未兑现的清理锚点
+        if enable_stub:
+            from services.stub_service import stitch
+            stitch(chapters, open_stubs)
 
         # 保存书籍（标签 = 用户标签 + AI 标签，去重）
         ai_tags = outline.get("tags") or []
@@ -280,6 +359,9 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         request.card_id,
         request.extra_requirements,
         request.tags,
+        request.enable_research,
+        request.enable_rich,
+        request.enable_stub,
     )
 
     async def event_generator():

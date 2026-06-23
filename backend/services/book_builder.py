@@ -408,47 +408,53 @@ def export_to_docx(md_content: str, title: str = "Book", language: str = "zh-CN"
 
     for ch in chapters:
         doc.add_heading(ch['title'], level=2)
-        paragraphs = ch['content'].split('\n')
-        for p_text in paragraphs:
-            p_text = p_text.strip()
-            if not p_text:
-                continue
-            if p_text.startswith('#'):
-                level = len(p_text) - len(p_text.lstrip('#'))
-                text = p_text.lstrip('#').strip()
+        for block in _parse_content_blocks(ch['content']):
+            kind = block[0]
+            if kind == "heading":
+                _, level, text = block
                 if level <= 3:
                     doc.add_heading(text, level=min(level, 2))
                 else:
                     para = doc.add_paragraph()
-                    run = para.add_run(text)
-                    run.bold = True
-            elif p_text.startswith('- ') or p_text.startswith('* '):
-                items = []
-                for line in paragraphs:
-                    line = line.strip()
-                    if line.startswith('- ') or line.startswith('* '):
-                        items.append(line[2:])
-                    elif line and not line.startswith('- ') and not line.startswith('* '):
-                        break
-                for item in items:
-                    doc.add_paragraph(item, style='List Bullet')
-                break
-            elif p_text.startswith('```'):
-                code_lines = []
-                for line in paragraphs[paragraphs.index(p_text)+1:]:
-                    if line.strip() == '```':
-                        break
-                    code_lines.append(line)
-                if code_lines:
-                    code_para = doc.add_paragraph('\n'.join(code_lines))
-                    code_para.style.font.name = 'Courier New'
-                    code_para.style.font.size = Pt(9)
-            else:
-                clean_text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', p_text)
-                clean_text = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', clean_text)
-                clean_text = re.sub(r'~~([^~]+)~~', r'\1', clean_text)
-                clean_text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean_text)
-                doc.add_paragraph(clean_text)
+                    para.add_run(text).bold = True
+            elif kind == "list":
+                for item in block[1]:
+                    doc.add_paragraph(_strip_inline_md(item), style='List Bullet')
+            elif kind == "code":
+                code_para = doc.add_paragraph(block[1])
+                code_para.style.font.name = 'Courier New'
+                code_para.style.font.size = Pt(9)
+            elif kind == "table":
+                headers, rows = block[1], block[2]
+                if headers:
+                    tbl = doc.add_table(rows=1, cols=len(headers))
+                    tbl.style = 'Light Grid Accent 1'
+                    for c, h in enumerate(headers):
+                        tbl.rows[0].cells[c].text = _strip_inline_md(h)
+                    for row in rows:
+                        cells = (row + [''] * len(headers))[:len(headers)]
+                        wr = tbl.add_row().cells
+                        for c, val in enumerate(cells):
+                            wr[c].text = _strip_inline_md(val)
+                    doc.add_paragraph('')
+            elif kind == "svg":
+                png = _rasterize_svg_to_png(block[1])
+                if png:
+                    try:
+                        pic = doc.add_paragraph()
+                        pic.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        pic.add_run().add_picture(io.BytesIO(png), width=Inches(5.5))
+                    except Exception:
+                        png = None
+                if not png and block[2]:
+                    cap = doc.add_paragraph(f"〔图：{block[2]}〕")
+                    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                if block[2]:
+                    cap = doc.add_paragraph(block[2])
+                    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    cap.runs and setattr(cap.runs[0].font, 'size', Pt(9))
+            else:  # para
+                doc.add_paragraph(_strip_inline_md(block[1]))
 
     buffer = io.BytesIO()
     doc.save(buffer)
@@ -543,29 +549,66 @@ def export_to_pdf(md_content: str, title: str = "Book", language: str = "zh-CN",
         story.append(Paragraph(_pdf_escape(ch['title']), h2_style))
         story.append(Spacer(1, 6))
 
-        paragraphs = ch['content'].split('\n')
-        for p_text in paragraphs:
-            p_text = p_text.strip()
-            if not p_text:
-                continue
-            if p_text.startswith('```'):
-                continue
-            if p_text.startswith('#'):
-                text = re.sub(r'^#+\s*', '', p_text)
-                story.append(Paragraph(_pdf_escape(text), h2_style if p_text.startswith('## ') else body_style))
-            elif p_text.startswith('- ') or p_text.startswith('* '):
-                text = p_text[2:]
-                text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
-                text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-                bullet_style = ParagraphStyle('Bullet', parent=body_style, firstLineIndent=0, leftIndent=20, bulletIndent=10)
-                story.append(Paragraph(_pdf_escape(text), bullet_style, bulletText='•'))
-            else:
-                clean = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', p_text)
-                clean = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', clean)
-                clean = re.sub(r'~~([^~]+)~~', r'\1', clean)
-                clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
-                clean = re.sub(r'!\[([^\]]*)\]\([^)]+\)', '', clean)
-                story.append(Paragraph(_pdf_escape(clean), body_style))
+        from reportlab.platypus import Table, TableStyle
+        from reportlab.lib import colors
+        bullet_style = ParagraphStyle('Bullet', parent=body_style, firstLineIndent=0, leftIndent=20, bulletIndent=10)
+        cap_style = ParagraphStyle('Cap', parent=body_style, firstLineIndent=0, alignment=TA_CENTER, fontSize=9, textColor='#666666')
+
+        for block in _parse_content_blocks(ch['content']):
+            kind = block[0]
+            if kind == "heading":
+                _, level, text = block
+                story.append(Paragraph(_pdf_escape(text), h2_style if level <= 2 else body_style))
+            elif kind == "list":
+                for item in block[1]:
+                    story.append(Paragraph(_pdf_escape(_strip_inline_md(item)), bullet_style, bulletText='•'))
+            elif kind == "code":
+                story.append(Paragraph(_pdf_escape(block[1]), code_style))
+            elif kind == "table":
+                headers, rows = block[1], block[2]
+                if headers:
+                    data = [[Paragraph(_pdf_escape(_strip_inline_md(h)), body_style) for h in headers]]
+                    for row in rows:
+                        cells = (row + [''] * len(headers))[:len(headers)]
+                        data.append([Paragraph(_pdf_escape(_strip_inline_md(c)), body_style) for c in cells])
+                    tbl = Table(data, hAlign='LEFT')
+                    tbl.setStyle(TableStyle([
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef2ff')),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                        ('TOPPADDING', (0, 0), (-1, -1), 3),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                    ]))
+                    story.append(Spacer(1, 6))
+                    story.append(tbl)
+                    story.append(Spacer(1, 8))
+            elif kind == "svg":
+                drawn = False
+                try:
+                    from io import BytesIO as _BIO
+                    from svglib.svglib import svg2rlg
+                    drawing = svg2rlg(_BIO(block[1].encode("utf-8")))
+                    if drawing is not None:
+                        story.append(Spacer(1, 6))
+                        story.append(drawing)
+                        drawn = True
+                except Exception:
+                    drawn = False
+                if not drawn:
+                    png = _rasterize_svg_to_png(block[1])
+                    if png:
+                        try:
+                            story.append(Image(io.BytesIO(png), width=14 * cm, height=14 * cm * 380 / 640))
+                            drawn = True
+                        except Exception:
+                            drawn = False
+                if block[2]:
+                    story.append(Paragraph(_pdf_escape(f"图：{block[2]}"), cap_style))
+                story.append(Spacer(1, 8))
+            else:  # para
+                story.append(Paragraph(_pdf_escape(_strip_inline_md(block[1])), body_style))
 
     doc.build(story)
     buffer.seek(0)
@@ -617,9 +660,167 @@ def _pdf_escape(text: str) -> str:
     return text
 
 
+def _gfm_table_to_html(block: str) -> str:
+    """把一段 GFM 表格文本转成 <table>。非表格返回 None。"""
+    lines = [l for l in block.strip().split('\n') if l.strip()]
+    if len(lines) < 2 or not re.match(r'^\s*\|?\s*:?-{2,}', lines[1].replace(' ', '')):
+        # 第二行须是分隔行（---|---）
+        if len(lines) < 2 or '---' not in lines[1]:
+            return None
+
+    def cells(line):
+        line = line.strip().strip('|')
+        return [c.strip() for c in line.split('|')]
+
+    headers = cells(lines[0])
+    body = [cells(l) for l in lines[2:]]
+    out = ['<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;margin:1em 0;">']
+    out.append('<thead><tr>' + ''.join(f'<th>{html.escape(h)}</th>' for h in headers) + '</tr></thead>')
+    out.append('<tbody>')
+    for row in body:
+        row = (row + [''] * len(headers))[:len(headers)]
+        out.append('<tr>' + ''.join(f'<td>{html.escape(c)}</td>' for c in row) + '</tr>')
+    out.append('</tbody></table>')
+    return ''.join(out)
+
+
+def _rasterize_svg_to_png(svg: str):
+    """SVG → PNG bytes，供 DOCX/PDF 嵌入。无可用渲染器时返回 None（优雅降级为说明文字）。"""
+    if not svg:
+        return None
+    try:
+        import cairosvg
+        return cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=640)
+    except Exception:
+        pass
+    try:
+        from io import BytesIO
+        from svglib.svglib import svg2rlg
+        from reportlab.graphics import renderPM
+        drawing = svg2rlg(BytesIO(svg.encode("utf-8")))
+        if drawing is None:
+            return None
+        buf = BytesIO()
+        renderPM.drawToFile(drawing, buf, fmt="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def _parse_content_blocks(text: str):
+    """把章节 Markdown 解析为有序块列表，供 DOCX/PDF 渲染。
+
+    返回元素：
+      ("heading", level, text) / ("svg", svg_str, caption) / ("table", headers, rows)
+      ("code", code_text) / ("list", [items]) / ("para", text)
+    """
+    lines = text.split("\n")
+    blocks = []
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+        if not stripped:
+            i += 1
+            continue
+
+        # SVG 围栏
+        if stripped.startswith("```svg"):
+            j = i + 1
+            buf = []
+            while j < n and lines[j].strip() != "```":
+                buf.append(lines[j])
+                j += 1
+            svg = "\n".join(buf).strip()
+            caption = ""
+            k = j + 1
+            while k < n and not lines[k].strip():
+                k += 1
+            if k < n:
+                cm = re.match(r'^\*图[:：]\s*(.+?)\*$', lines[k].strip())
+                if cm:
+                    caption = cm.group(1)
+                    k += 1
+            blocks.append(("svg", svg, caption))
+            i = k
+            continue
+
+        # 其它代码围栏
+        if stripped.startswith("```"):
+            j = i + 1
+            buf = []
+            while j < n and lines[j].strip() != "```":
+                buf.append(lines[j])
+                j += 1
+            blocks.append(("code", "\n".join(buf)))
+            i = j + 1
+            continue
+
+        # GFM 表格：当前行含 |，下一行是分隔行
+        if "|" in stripped and i + 1 < n and re.match(r'^\s*\|?[\s:\-|]+\|?\s*$', lines[i + 1]) and "-" in lines[i + 1]:
+            def cells(l):
+                return [c.strip() for c in l.strip().strip("|").split("|")]
+            headers = cells(line)
+            rows = []
+            j = i + 2
+            while j < n and "|" in lines[j] and lines[j].strip():
+                rows.append(cells(lines[j]))
+                j += 1
+            blocks.append(("table", headers, rows))
+            i = j
+            continue
+
+        # 标题
+        if stripped.startswith("#"):
+            level = len(stripped) - len(stripped.lstrip("#"))
+            blocks.append(("heading", level, stripped.lstrip("#").strip()))
+            i += 1
+            continue
+
+        # 列表（连续项）
+        if stripped.startswith(("- ", "* ")):
+            items = []
+            while i < n and lines[i].strip().startswith(("- ", "* ")):
+                items.append(lines[i].strip()[2:])
+                i += 1
+            blocks.append(("list", items))
+            continue
+
+        # 普通段落
+        blocks.append(("para", stripped))
+        i += 1
+    return blocks
+
+
+def _strip_inline_md(s: str) -> str:
+    s = re.sub(r'`⚓[^`]*`', '', s)          # 移除 stub 锚点 token
+    s = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', s)
+    s = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', s)
+    s = re.sub(r'~~([^~]+)~~', r'\1', s)
+    s = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', s)
+    s = re.sub(r'`([^`]+)`', r'\1', s)
+    return s
+
+
 def _markdown_to_simple_html(md_text: str) -> str:
     """将 Markdown 章节内容转为简单 HTML（用于 EPUB 章节体）"""
+    import html as html_mod
+
     html = md_text
+
+    # 0) stub 锚点 token ``⚓ID`` → 隐藏 <a id>；跨章跳转链接降级为纯文字（EPUB 章节分文件，跨文件锚点不可靠）
+    html = re.sub(r'`⚓([^`]+)`', lambda m: f'<a id="{html_mod.escape(m.group(1))}"></a>', html)
+    html = re.sub(r'（?\[([^\]]+)\]\(#[^)]+\)）?', r'\1', html)
+
+    # 1) 写作工具 SVG：```svg ... ``` 直接内联（EPUB3/XHTML 支持 SVG）
+    html = re.sub(r'```svg\s*\n([\s\S]*?)```', lambda m: f'<div style="text-align:center;margin:1em 0;">{m.group(1).strip()}</div>', html)
+
+    # 2) GFM 表格 → <table>
+    def _table_repl(m):
+        res = _gfm_table_to_html(m.group(0))
+        return res if res else m.group(0)
+    html = re.sub(r'(?:^\|.*\|[ \t]*\n)(?:^\|?[ \t:\-|]+\|?[ \t]*\n)(?:^\|.*\|[ \t]*\n?)+', _table_repl, html, flags=re.MULTILINE)
+
     html = re.sub(r'```(\w*)\n([\s\S]*?)```', r'<pre><code>\2</code></pre>', html)
     html = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'', html)
     html = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', html)
@@ -640,7 +841,7 @@ def _markdown_to_simple_html(md_text: str) -> str:
         p = p.strip()
         if not p:
             continue
-        if p.startswith('<h') or p.startswith('<pre') or p.startswith('<li') or p.startswith('<blockquote'):
+        if p.startswith('<h') or p.startswith('<pre') or p.startswith('<li') or p.startswith('<blockquote') or p.startswith('<table') or p.startswith('<div'):
             result.append(p)
         else:
             lines = p.split('\n')

@@ -14,6 +14,9 @@ python-docx>=1.1.0
 reportlab>=4.0.0
 pypdf>=4.0.0
 python-multipart>=0.0.9
+Pillow>=10.0.0
+# 可选：让 PDF/DOCX 导出能内嵌 SVG 图（纯 Python，无系统依赖）。缺失时自动降级为图说明文字。
+svglib>=1.5.0
 # 向量数据库：Milvus 客户端（全平台可装）
 pymilvus>=2.4.0
 # Milvus Lite 嵌入式引擎：仅 Linux/macOS 有 wheel，用环境标记避免在 Windows 上安装失败。

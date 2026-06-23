@@ -43,6 +43,20 @@ body {
   animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* stub 跨章锚点：占位不可见，可作为滚动目标；跳转时短暂高亮 */
+.book-anchor {
+  display: inline-block;
+  scroll-margin-top: 90px;
+}
+@keyframes anchorFlash {
+  0% { background-color: rgba(99, 102, 241, 0.35); }
+  100% { background-color: transparent; }
+}
+.anchor-flash {
+  animation: anchorFlash 1.6s ease-out;
+  border-radius: 4px;
+}
+
 /* 下拉菜单：从顶部展开淡入 */
 @keyframes dropdownIn {
   from { opacity: 0; transform: translateY(-6px) scale(0.98); }

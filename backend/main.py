@@ -37,6 +37,7 @@ from database import init_db
 from routers import books, generate, p2p
 from routers import providers
 from routers import knowledge
+from routers import settings as settings_router
 from routers.p2p import p2p_service
 from services.identity import generate_user_id
 
@@ -122,6 +123,7 @@ app.include_router(generate.router)
 app.include_router(p2p.router)
 app.include_router(providers.router)
 app.include_router(knowledge.router)
+app.include_router(settings_router.router)
 
 if __name__ == "__main__":
     import uvicorn

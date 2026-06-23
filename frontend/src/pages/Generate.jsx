@@ -22,6 +22,78 @@ export function parseTags(input) {
   return input.split(/[,，、;；]/).map(clean).filter(Boolean)
 }
 
+// 联网搜索配置弹窗（Tavily / Serper / Brave）
+function SearchConfigModal({ open, onClose }) {
+  const [cfg, setCfg] = useState(null)
+  const [provider, setProvider] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    api.getSearchConfig().then((c) => {
+      setCfg(c)
+      setProvider(c.provider || '')
+      setApiKey('')
+    }).catch(() => {})
+  }, [open])
+
+  if (!open) return null
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const body = { provider }
+      if (apiKey) body.api_key = apiKey
+      const c = await api.setSearchConfig(body)
+      setCfg(c)
+      onClose()
+    } catch (e) {
+      // ignore
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 animate-overlay" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-2xl w-[460px] max-w-[92vw] p-6 animate-modal">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">联网搜索配置</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          智能研究的「web 搜索」工具需要一个搜索 API。支持 Tavily / Serper / Brave，自行申请 key 后填入。
+          {cfg?.configured && <span className="text-green-600 ml-1">当前已配置（{cfg.provider}）</span>}
+        </p>
+        <label className="block text-sm font-medium text-gray-700 mb-1">搜索服务商</label>
+        <select
+          value={provider}
+          onChange={(e) => setProvider(e.target.value)}
+          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-3 bg-white"
+        >
+          <option value="">（不启用 / 关闭联网搜索）</option>
+          <option value="tavily">Tavily（推荐，LLM 友好）</option>
+          <option value="serper">Serper（Google 结果）</option>
+          <option value="brave">Brave Search</option>
+        </select>
+        <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={cfg?.has_key ? `已保存：${cfg.key_masked}（留空则不修改）` : '粘贴 API Key'}
+          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
+        />
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-md">取消</button>
+          <button onClick={save} disabled={saving} className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400">
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Generate() {
   const { t, locale } = useI18n()
   const [searchParams] = useSearchParams()
@@ -45,6 +117,11 @@ function Generate() {
   const [extraRequirements, setExtraRequirements] = useState('')
   const [showCardPicker, setShowCardPicker] = useState(false)
   const selectedCard = cards.find((c) => c.id === cardId) || null
+  const [enableResearch, setEnableResearch] = useState(false)
+  const [enableRich, setEnableRich] = useState(true)
+  const [enableStub, setEnableStub] = useState(false)
+  const [researchLog, setResearchLog] = useState([])
+  const [showSearchConfig, setShowSearchConfig] = useState(false)
   const activeModel = useStore((s) => s.activeModel)
   const navigate = useNavigate()
   
@@ -143,6 +220,20 @@ function Generate() {
       setTotalChapters(data.outline.chapters?.length || 0)
     }
 
+    // ReAct 研究过程：思考 / 调用工具 / 观察
+    if (data.stage === 'research') {
+      setResearchLog((prev) => [
+        ...prev.slice(-40),
+        {
+          stage: data.research_stage,
+          tool: data.tool,
+          message: data.message || '',
+          chapter: (data.current_chapter ?? 0) + 1,
+          ts: Date.now() + Math.random(),
+        },
+      ])
+    }
+
     if (data.stage === 'outline' || data.stage === 'outline_done') {
       // 大纲已在上方统一处理
     } else if (data.stage === 'chapter' || data.stage === 'chapter_done') {
@@ -204,6 +295,7 @@ function Generate() {
     setCurrentChapter(0)
     setTotalChapters(0)
     setHistoryId(null)
+    setResearchLog([])
     setStatusMessage(t('generate.preparing'))
 
     try {
@@ -217,6 +309,9 @@ function Generate() {
           model_name: activeModel?.model_name || null,
           card_id: cardId || null,
           extra_requirements: extraRequirements,
+          enable_research: enableResearch,
+          enable_rich: enableRich,
+          enable_stub: enableStub,
           tags: parseTags(tagsInput),
         }),
         signal
@@ -360,7 +455,83 @@ function Generate() {
             />
           </div>
         </div>
-        
+
+        {/* 写作内容工具：允许模型在正文插入表格 / SVG 图 */}
+        <label className={`mt-4 flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+          enableRich ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-gray-300'
+        } ${generating ? 'opacity-60 pointer-events-none' : ''}`}>
+          <input
+            type="checkbox"
+            checked={enableRich}
+            onChange={(e) => setEnableRich(e.target.checked)}
+            disabled={generating}
+            className="mt-0.5 accent-indigo-600 w-4 h-4"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-800">
+              {t('generate.rich') === 'generate.rich' ? '表格 / 图表（写作工具）' : t('generate.rich')}
+            </span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {t('generate.richHint') === 'generate.richHint'
+                ? '允许 AI 在合适处插入表格和 SVG 图表（柱状/折线/饼图），直接嵌入书中正文。'
+                : t('generate.richHint')}
+            </p>
+          </div>
+        </label>
+
+        {/* 跨章占位 Stub：前向引用 + 自动跳转链接 */}
+        <label className={`mt-4 flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+          enableStub ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-gray-300'
+        } ${generating ? 'opacity-60 pointer-events-none' : ''}`}>
+          <input
+            type="checkbox"
+            checked={enableStub}
+            onChange={(e) => setEnableStub(e.target.checked)}
+            disabled={generating}
+            className="mt-0.5 accent-indigo-600 w-4 h-4"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-800">
+              {t('generate.stub') === 'generate.stub' ? '跨章占位（Stub 前向引用）' : t('generate.stub')}
+            </span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {t('generate.stubHint') === 'generate.stubHint'
+                ? '允许 AI 在前面章节登记"留到后文展开"的占位，后文兑现时自动生成可跳转的交叉引用链接。'
+                : t('generate.stubHint')}
+            </p>
+          </div>
+        </label>
+
+        {/* ReAct 智能研究开关：每章先思考是否需要联网搜索 / 查本地知识库 */}
+        <label className={`mt-4 flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+          enableResearch ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-gray-300'
+        } ${generating ? 'opacity-60 pointer-events-none' : ''}`}>
+          <input
+            type="checkbox"
+            checked={enableResearch}
+            onChange={(e) => setEnableResearch(e.target.checked)}
+            disabled={generating}
+            className="mt-0.5 accent-indigo-600 w-4 h-4"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-800">
+              {t('generate.research') === 'generate.research' ? '智能研究（ReAct）' : t('generate.research')}
+            </span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {t('generate.researchHint') === 'generate.researchHint'
+                ? '每章生成前，AI 会思考是否需要联网搜索或查本地知识库，再下笔。'
+                : t('generate.researchHint')}
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); setShowSearchConfig(true) }}
+                className="ml-1 text-indigo-600 hover:underline pointer-events-auto"
+              >
+                {t('generate.configSearch') === 'generate.configSearch' ? '配置联网搜索' : t('generate.configSearch')}
+              </button>
+            </p>
+          </div>
+        </label>
+
         <div className="mt-6 flex gap-3">
           <button
             onClick={handleGenerate}
@@ -400,6 +571,25 @@ function Generate() {
               {t('generate.taskRunning').replace('{id}', historyId)}
             </p>
           )}
+
+          {/* ReAct 研究活动日志 */}
+          {enableResearch && researchLog.length > 0 && (
+            <div className="mt-4 border border-gray-100 rounded-lg bg-gray-50 p-3 max-h-56 overflow-y-auto space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 mb-1">
+                {t('generate.researchLog') === 'generate.researchLog' ? '研究过程' : t('generate.researchLog')}
+              </p>
+              {researchLog.map((r) => {
+                const icon = r.stage === 'thought' ? '💭' : r.stage === 'tool' ? (r.tool === 'web_search' ? '🌐' : '📚') : r.stage === 'observation' ? '🔍' : '•'
+                return (
+                  <div key={r.ts} className="text-xs text-gray-600 flex gap-1.5 animate-dropdown">
+                    <span className="shrink-0">{icon}</span>
+                    <span className="text-gray-400 shrink-0">第{r.chapter}章</span>
+                    <span className="min-w-0 break-words">{r.message}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -416,6 +606,7 @@ function Generate() {
       )}
 
       <ProviderModal open={showProviderModal} onClose={() => setShowProviderModal(false)} />
+      <SearchConfigModal open={showSearchConfig} onClose={() => setShowSearchConfig(false)} />
 
       {/* 写作卡选择弹窗：一堆可视化卡片 */}
       {showCardPicker && (

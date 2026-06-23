@@ -249,4 +249,22 @@ export const api = {
     const response = await fetch(`${API_BASE}/knowledge/cards/${id}/duplicate`, { method: 'POST' })
     return response.json()
   },
+
+  // ---------------- 设置：web 搜索 ----------------
+
+  async getSearchConfig() {
+    const response = await fetch(`${API_BASE}/settings/search`)
+    return response.json()
+  },
+
+  async setSearchConfig({ provider, api_key }) {
+    const body = { provider }
+    if (api_key !== undefined) body.api_key = api_key
+    const response = await fetch(`${API_BASE}/settings/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    return response.json()
+  },
 }

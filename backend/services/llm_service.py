@@ -542,6 +542,8 @@ def _build_chapter_prompts(
     card_context: str = "",
     extra_requirements: str = "",
     has_continuation: bool = False,
+    enable_rich: bool = False,
+    stub_note: str = "",
 ) -> tuple[str, str]:
     lang_name = _get_language_name(language)
     total_chapters = len(outline.get("chapters", []))
@@ -552,6 +554,13 @@ def _build_chapter_prompts(
         else ""
     )
     context = _compose_context(card_context, extra_requirements)
+
+    rich_block = ""
+    if enable_rich:
+        from services.content_tools import content_tools_prompt
+        rich_block = "\n\n" + content_tools_prompt()
+    if stub_note:
+        rich_block += "\n\n" + stub_note
 
     system_prompt = f"""你是一个专业的电子书内容写手。正在为《{outline["title"]}》撰写第{chapter_index + 1}章（共{total_chapters}章）。
 书籍简介：{outline["description"]}
@@ -575,7 +584,7 @@ def _build_chapter_prompts(
 正文内容...
 
 ### 1.2 小节标题
-正文内容..."""
+正文内容...{rich_block}"""
 
     user_message = f"""章节标题：{chapter["title"]}
 章节概要：{chapter["summary"]}
@@ -619,6 +628,14 @@ def generate_outline_sync(
     return _parse_outline_json(content)
 
 
+def _postprocess_chapter(content: str, enable_rich: bool) -> str:
+    content = _clean_chapter_markdown(content)
+    if enable_rich:
+        from services.content_tools import apply_content_tools
+        content = apply_content_tools(content)
+    return content
+
+
 def generate_chapter_sync(
     outline: dict,
     chapter: dict,
@@ -629,13 +646,19 @@ def generate_chapter_sync(
     card_context: str = "",
     extra_requirements: str = "",
     has_continuation: bool = False,
+    enable_rich: bool = False,
+    stub_note: str = "",
+    post_process: bool = True,
 ) -> str:
     service = get_llm_service(provider_id, model_name)
     system_prompt, user_message = _build_chapter_prompts(
-        outline, chapter, chapter_index, language, card_context, extra_requirements, has_continuation
+        outline, chapter, chapter_index, language, card_context, extra_requirements, has_continuation, enable_rich, stub_note
     )
     content = service.generate_sync(system_prompt, user_message)
-    return _clean_chapter_markdown(content)
+    if not post_process:
+        # 仅做标题清洗，content_tools 留给调用方在 stub 处理后再执行
+        return _clean_chapter_markdown(content)
+    return _postprocess_chapter(content, enable_rich)
 
 
 async def generate_outline(
@@ -665,10 +688,11 @@ async def generate_chapter(
     card_context: str = "",
     extra_requirements: str = "",
     has_continuation: bool = False,
+    enable_rich: bool = False,
 ) -> str:
     service = get_llm_service(provider_id, model_name)
     system_prompt, user_message = _build_chapter_prompts(
-        outline, chapter, chapter_index, language, card_context, extra_requirements, has_continuation
+        outline, chapter, chapter_index, language, card_context, extra_requirements, has_continuation, enable_rich
     )
     content = await service.generate(system_prompt, user_message)
-    return _clean_chapter_markdown(content)
+    return _postprocess_chapter(content, enable_rich)

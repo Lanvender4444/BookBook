@@ -73,6 +73,16 @@ class ActiveModel(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class AppSetting(Base):
+    """通用键值设置表（如 web 搜索 provider / api key）。"""
+
+    __tablename__ = "app_settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class KnowledgeSource(Base):
     """RAG 知识源：投递的本地文档 / 内置库条目 / 纯文本。
 
