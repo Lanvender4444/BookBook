@@ -70,6 +70,8 @@
     "richHint": "Let the AI insert tables and SVG charts (bar/line/pie) directly into the book text where helpful.",
     "stub": "Cross-chapter stubs (forward refs)",
     "stubHint": "Let the AI register a 'cover this later' placeholder in earlier chapters; when fulfilled later, a clickable cross-reference link is generated automatically.",
+    "concurrency": "Concurrent chapter generation",
+    "concurrencyHint": "After the outline, a router analyzes chapter dependencies and generates independent chapters in parallel to speed things up.",
     "research": "Smart research (ReAct)",
     "researchHint": "Before each chapter, the AI decides whether to web-search or query the local knowledge base.",
     "researchLog": "Research activity",

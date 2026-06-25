@@ -25,6 +25,8 @@ class GenerateRequest(BaseModel):
     enable_research: bool = False  # 开启 ReAct 研究循环（每章决定是否 web 搜索 / 查知识库）
     enable_rich: bool = True  # 写作时内容工具：允许模型在正文插入表格 / SVG 图
     enable_stub: bool = False  # 跨章占位 Stub：前向引用与自动跳转链接
+    enable_concurrency: bool = False  # 章节并发：路由分析依赖后并行生成无依赖章节
+    max_concurrency: int = 3  # 并发上限（避免触发 LLM 限流）
 
 
 def _load_card(card_id: str | None):
@@ -96,8 +98,11 @@ def run_generation_task(
     enable_research: bool = False,
     enable_rich: bool = True,
     enable_stub: bool = False,
+    enable_concurrency: bool = False,
+    max_concurrency: int = 3,
 ):
     """在后台线程中运行生成任务"""
+    import threading
     from services.llm_service import generate_outline_sync, generate_chapter_sync, get_llm_service
     from services.book_builder import save_book_sync
 
@@ -155,57 +160,56 @@ def run_generation_task(
             "outline": outline,
         }
 
-        # 跨章占位 stub 的全局待办列表（贯穿所有章节）
-        open_stubs = []
+        # ---- Plan-and-Execute：路由分析并发波，再逐波执行（每章独立 ReAct） ----
+        from services.stub_service import StubStore
+        from services.chapter_router import plan_waves
+        from services.agent_tools import web_search_configured
 
-        chapters = []
+        stub_store = StubStore()          # 线程安全的 stub 仓库（读写过锁）
         total_chapters = len(outline["chapters"])
+        chapter_results = {}              # {index: content}
+        done_count = {"n": 0}
+        progress_lock = threading.Lock()
 
-        for i, chapter in enumerate(outline["chapters"]):
-            # 每个章节开始前检查取消
-            if task_status.get(history_id, {}).get("cancelled"):
-                db.query(GenerationHistory).filter(
-                    GenerationHistory.id == history_id
-                ).update({"status": "deleted"})
-                db.commit()
-                task_status[history_id]["status"] = "cancelled"
-                return
+        # 路由：哪些章节可以并发
+        waves = plan_waves(outline, provider_id, model_name, enabled=enable_concurrency)
 
-            # 更新进度
-            task_status[history_id]["progress"] = {
-                "stage": "chapter",
-                "message": f"正在生成第 {i + 1}/{total_chapters} 章: {chapter.get('title', '')}",
-                "current_chapter": i,
-                "total_chapters": total_chapters,
-                "chapter_title": chapter.get("title", ""),
-                # 附带大纲：SSE 轮询可能错过转瞬即逝的 outline_done 事件，
-                # 每个章节事件都带上，保证前端任何时刻都能同步到大纲
-                "outline": outline,
-            }
+        def _cancelled():
+            return task_status.get(history_id, {}).get("cancelled")
 
-            # 写作卡：每章按「章节标题+概要」重新检索，上下文更精准
+        def _gen_one_chapter(i: int, chapter: dict) -> str:
+            """单章执行：(可选) ReAct 研究 → 写作 → stub 处理 → 内容工具。线程内运行。"""
+            with progress_lock:
+                task_status[history_id]["progress"] = {
+                    "stage": "chapter",
+                    "message": f"正在生成第 {i + 1}/{total_chapters} 章: {chapter.get('title', '')}",
+                    "current_chapter": done_count["n"],
+                    "total_chapters": total_chapters,
+                    "chapter_title": chapter.get("title", ""),
+                    "outline": outline,
+                }
+
             chapter_query = f"{chapter.get('title', '')} {chapter.get('summary', '')}".strip() or prompt
             chapter_ctx = _card_context_for(card, chapter_query, extra_requirements)
 
-            # ReAct 研究循环：每章先思考是否需要 web 搜索 / 查本地知识库
+            # 每章独立的 ReAct 研究循环
             research_notes = ""
             if enable_research:
                 try:
                     from services.react_agent import research_chapter
-                    from services.agent_tools import web_search_configured
 
                     def _on_research(ev):
-                        # 把研究过程写进进度，前端可展示「思考/搜索中」
-                        task_status[history_id]["progress"] = {
-                            "stage": "research",
-                            "message": ev.get("message", ""),
-                            "research_stage": ev.get("stage"),
-                            "tool": ev.get("tool"),
-                            "current_chapter": i,
-                            "total_chapters": total_chapters,
-                            "chapter_title": chapter.get("title", ""),
-                            "outline": outline,
-                        }
+                        with progress_lock:
+                            task_status[history_id]["progress"] = {
+                                "stage": "research",
+                                "message": ev.get("message", ""),
+                                "research_stage": ev.get("stage"),
+                                "tool": ev.get("tool"),
+                                "current_chapter": done_count["n"],
+                                "total_chapters": total_chapters,
+                                "chapter_title": chapter.get("title", ""),
+                                "outline": outline,
+                            }
 
                     svc = get_llm_service(provider_id, model_name)
                     research_notes = research_chapter(
@@ -217,68 +221,76 @@ def run_generation_task(
                         on_event=_on_research,
                     )
                 except Exception as e:
-                    print(f"[ReAct] research failed: {e}")
+                    print(f"[ReAct] research failed (ch{i}): {e}")
 
-            # 研究笔记并入章节上下文
             merged_card_context = chapter_ctx["card_context"]
             if research_notes:
                 merged_card_context = (merged_card_context + "\n\n" + research_notes).strip()
 
-            # stub 说明 + 当前待兑现列表（注入本章 prompt）
-            stub_note = ""
-            if enable_stub:
-                from services.stub_service import stubs_prompt
-                stub_note = stubs_prompt(open_stubs)
+            # stub 待办（加锁快照）注入 prompt
+            stub_note = stub_store.prompt() if enable_stub else ""
 
-            # 生成章节（耗时操作，无法中断）
             content = generate_chapter_sync(
-                outline,
-                chapter,
-                i,
-                provider_id=provider_id,
-                model_name=model_name,
-                language=language,
+                outline, chapter, i,
+                provider_id=provider_id, model_name=model_name, language=language,
                 card_context=merged_card_context,
                 extra_requirements=chapter_ctx["extra_requirements"],
                 has_continuation=chapter_ctx["has_continuation"],
                 enable_rich=enable_rich,
                 stub_note=stub_note,
-                # 开 stub 时延迟 content_tools，先处理 stub 再渲染表格/图
-                post_process=not enable_stub,
+                post_process=not enable_stub,  # 开 stub 时延迟 content_tools
             )
 
             if enable_stub:
-                from services.stub_service import process_chapter as _process_stub
-                content = _process_stub(content, i, open_stubs)
+                content = stub_store.process(content, i)   # 登记/兑现，过锁
                 if enable_rich:
                     from services.content_tools import apply_content_tools
                     content = apply_content_tools(content)
 
-            chapters.append(content)
+            with progress_lock:
+                done_count["n"] += 1
+                task_status[history_id]["progress"] = {
+                    "stage": "chapter_done",
+                    "message": f"第 {i + 1} 章完成（{done_count['n']}/{total_chapters}）",
+                    "current_chapter": done_count["n"],
+                    "total_chapters": total_chapters,
+                    "chapter_title": chapter.get("title", ""),
+                    "chapter_content": content,
+                }
+            return content
 
-            # 章节完成后检查取消
-            if task_status.get(history_id, {}).get("cancelled"):
-                db.query(GenerationHistory).filter(
-                    GenerationHistory.id == history_id
-                ).update({"status": "deleted"})
+        # 逐波执行：波内并发，波间串行（后波可见前波登记的 stub）
+        max_workers = max(1, min(int(max_concurrency or 1), 4)) if enable_concurrency else 1
+        for wave in waves:
+            if _cancelled():
+                db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update({"status": "deleted"})
                 db.commit()
                 task_status[history_id]["status"] = "cancelled"
                 return
+            if max_workers > 1 and len(wave) > 1:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    futs = {idx: pool.submit(_gen_one_chapter, idx, outline["chapters"][idx]) for idx in wave}
+                    for idx, fut in futs.items():
+                        chapter_results[idx] = fut.result()
+            else:
+                for idx in wave:
+                    if _cancelled():
+                        break
+                    chapter_results[idx] = _gen_one_chapter(idx, outline["chapters"][idx])
 
-            # 章节完成，更新进度
-            task_status[history_id]["progress"] = {
-                "stage": "chapter_done",
-                "message": f"第 {i + 1} 章完成",
-                "current_chapter": i + 1,
-                "total_chapters": total_chapters,
-                "chapter_title": chapter.get("title", ""),
-                "chapter_content": content,
-            }
+        if _cancelled():
+            db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update({"status": "deleted"})
+            db.commit()
+            task_status[history_id]["status"] = "cancelled"
+            return
+
+        # 按章节顺序组装
+        chapters = [chapter_results.get(i, "") for i in range(total_chapters)]
 
         # 缝合跨章 stub：已兑现的在源处加跳转链接，未兑现的清理锚点
         if enable_stub:
-            from services.stub_service import stitch
-            stitch(chapters, open_stubs)
+            stub_store.stitch(chapters)
 
         # 保存书籍（标签 = 用户标签 + AI 标签，去重）
         ai_tags = outline.get("tags") or []
@@ -362,6 +374,8 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         request.enable_research,
         request.enable_rich,
         request.enable_stub,
+        request.enable_concurrency,
+        request.max_concurrency,
     )
 
     async def event_generator():

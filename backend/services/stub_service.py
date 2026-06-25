@@ -23,6 +23,7 @@ resolve 回调这个 stub —— 我们在【登记位置(源)】插入一个跳
 
 import json
 import re
+import threading
 
 TOOL_BLOCK_RE = re.compile(r"```tool\s*\n(.*?)```", re.S)
 
@@ -117,6 +118,33 @@ def stitch(chapters: list, open_stubs: list) -> None:
         else:
             # 未兑现：移除源锚点，避免残留
             chapters[sc] = chapters[sc].replace(src_token, "")
+
+
+class StubStore:
+    """线程安全的 stub 仓库。章节并发执行时，对 open_stubs 的读/写都过锁。"""
+
+    def __init__(self):
+        self._stubs = []
+        self._lock = threading.RLock()
+
+    def prompt(self) -> str:
+        """快照当前待办，生成注入章节 prompt 的说明。"""
+        with self._lock:
+            return stubs_prompt(list(self._stubs))
+
+    def process(self, content: str, chapter_index: int) -> str:
+        """登记/兑现本章 stub（加锁）。"""
+        with self._lock:
+            return process_chapter(content, chapter_index, self._stubs)
+
+    def stitch(self, chapters: list) -> None:
+        """全书缝合（此时通常已单线程，仍加锁以防万一）。"""
+        with self._lock:
+            stitch(chapters, self._stubs)
+
+    def snapshot(self) -> list:
+        with self._lock:
+            return list(self._stubs)
 
 
 def strip_anchor_tokens(text: str) -> str:

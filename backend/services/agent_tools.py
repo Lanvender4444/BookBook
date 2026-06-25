@@ -8,6 +8,7 @@
 
 import os
 import json
+import re
 
 import httpx
 from database import SessionLocal
@@ -149,12 +150,94 @@ def search_knowledge(query: str, source_ids: list[str], top_k: int = 5) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- 论文搜寻（学术）
+
+def search_papers(query: str, max_results: int = 5) -> str:
+    """学术论文搜寻：arXiv（主）+ Crossref（补）。两者均无需 API key，开箱即用。"""
+    results = []
+    try:
+        results = _search_arxiv(query, max_results)
+    except Exception as e:
+        print(f"[papers] arxiv failed: {e}")
+    if len(results) < max_results:
+        try:
+            results += _search_crossref(query, max_results - len(results))
+        except Exception as e:
+            print(f"[papers] crossref failed: {e}")
+    if not results:
+        return f"[search_papers]：未找到与「{query}」相关的论文。"
+
+    lines = [f"论文搜寻「{query}」结果："]
+    for i, r in enumerate(results[:max_results], 1):
+        authors = ", ".join(r.get("authors", [])[:4])
+        if len(r.get("authors", [])) > 4:
+            authors += " 等"
+        summary = (r.get("summary", "") or "").strip().replace("\n", " ")
+        if len(summary) > 320:
+            summary = summary[:320] + "…"
+        meta = " · ".join(x for x in [r.get("source"), r.get("year"), authors] if x)
+        lines.append(f"{i}. {r.get('title','').strip()}\n   {meta}\n   {summary}\n   {r.get('url','')}")
+    return "\n".join(lines)
+
+
+def _search_arxiv(query: str, n: int):
+    import xml.etree.ElementTree as ET
+
+    with httpx.Client(timeout=SEARCH_TIMEOUT) as c:
+        resp = c.get(
+            "http://export.arxiv.org/api/query",
+            params={"search_query": f"all:{query}", "start": 0, "max_results": n},
+        )
+        resp.raise_for_status()
+        text = resp.text
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    root = ET.fromstring(text)
+    out = []
+    for e in root.findall("a:entry", ns):
+        title = (e.findtext("a:title", default="", namespaces=ns) or "").strip()
+        summary = (e.findtext("a:summary", default="", namespaces=ns) or "").strip()
+        published = (e.findtext("a:published", default="", namespaces=ns) or "")[:4]
+        authors = [a.findtext("a:name", default="", namespaces=ns) for a in e.findall("a:author", ns)]
+        link = ""
+        for li in e.findall("a:link", ns):
+            if li.get("type") == "text/html" or li.get("rel") == "alternate":
+                link = li.get("href", "")
+                break
+        out.append({"title": title, "summary": summary, "authors": authors, "year": published, "url": link, "source": "arXiv"})
+    return out
+
+
+def _search_crossref(query: str, n: int):
+    with httpx.Client(timeout=SEARCH_TIMEOUT) as c:
+        resp = c.get(
+            "https://api.crossref.org/works",
+            params={"query": query, "rows": n, "select": "title,author,abstract,URL,issued,container-title"},
+            headers={"User-Agent": "BookBook/1.0 (mailto:app@bookbook.local)"},
+        )
+        resp.raise_for_status()
+        items = resp.json().get("message", {}).get("items", [])
+    out = []
+    for it in items:
+        title = (it.get("title") or [""])[0]
+        authors = [f"{a.get('given','')} {a.get('family','')}".strip() for a in it.get("author", [])]
+        year = ""
+        try:
+            year = str(it.get("issued", {}).get("date-parts", [[None]])[0][0] or "")
+        except Exception:
+            year = ""
+        abstract = re.sub(r"<[^>]+>", "", it.get("abstract", "") or "")
+        out.append({"title": title, "summary": abstract, "authors": authors, "year": year, "url": it.get("URL", ""), "source": "Crossref"})
+    return out
+
+
 # ---------------------------------------------------------------- 工具描述（给模型看）
 
-def tools_spec(knowledge_available: bool, web_available: bool) -> str:
+def tools_spec(knowledge_available: bool, web_available: bool, papers_available: bool = True) -> str:
     specs = []
     if web_available:
         specs.append('- "web_search": 联网搜索最新/外部事实信息。参数 {"query": "搜索词"}')
+    if papers_available:
+        specs.append('- "search_papers": 学术论文搜寻（arXiv/Crossref），用于需要严谨学术依据时。参数 {"query": "检索词"}')
     if knowledge_available:
         specs.append('- "search_knowledge": 检索用户提供的本地知识库（资料库/风格/续写原文）。参数 {"query": "检索词"}')
     return "\n".join(specs)
@@ -163,6 +246,8 @@ def tools_spec(knowledge_available: bool, web_available: bool) -> str:
 def run_tool(name: str, query: str, source_ids: list[str]) -> str:
     if name == "web_search":
         return web_search(query)
+    if name == "search_papers":
+        return search_papers(query)
     if name == "search_knowledge":
         return search_knowledge(query, source_ids)
     return f"[未知工具]：{name}"

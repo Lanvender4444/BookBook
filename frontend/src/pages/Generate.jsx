@@ -120,6 +120,7 @@ function Generate() {
   const [enableResearch, setEnableResearch] = useState(false)
   const [enableRich, setEnableRich] = useState(true)
   const [enableStub, setEnableStub] = useState(false)
+  const [enableConcurrency, setEnableConcurrency] = useState(false)
   const [researchLog, setResearchLog] = useState([])
   const [showSearchConfig, setShowSearchConfig] = useState(false)
   const activeModel = useStore((s) => s.activeModel)
@@ -312,6 +313,7 @@ function Generate() {
           enable_research: enableResearch,
           enable_rich: enableRich,
           enable_stub: enableStub,
+          enable_concurrency: enableConcurrency,
           tags: parseTags(tagsInput),
         }),
         signal
@@ -475,6 +477,29 @@ function Generate() {
               {t('generate.richHint') === 'generate.richHint'
                 ? '允许 AI 在合适处插入表格和 SVG 图表（柱状/折线/饼图），直接嵌入书中正文。'
                 : t('generate.richHint')}
+            </p>
+          </div>
+        </label>
+
+        {/* 章节并发：路由分析依赖后并行生成 */}
+        <label className={`mt-4 flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+          enableConcurrency ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-gray-300'
+        } ${generating ? 'opacity-60 pointer-events-none' : ''}`}>
+          <input
+            type="checkbox"
+            checked={enableConcurrency}
+            onChange={(e) => setEnableConcurrency(e.target.checked)}
+            disabled={generating}
+            className="mt-0.5 accent-indigo-600 w-4 h-4"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-800">
+              {t('generate.concurrency') === 'generate.concurrency' ? '章节并发生成' : t('generate.concurrency')}
+            </span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {t('generate.concurrencyHint') === 'generate.concurrencyHint'
+                ? '大纲生成后，路由器分析章节依赖关系，把互不依赖的章节并行生成，加快出书速度。'
+                : t('generate.concurrencyHint')}
             </p>
           </div>
         </label>
