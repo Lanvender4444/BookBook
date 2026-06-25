@@ -53,55 +53,76 @@ def stubs_prompt(open_stubs: list) -> str:
     return head
 
 
-def process_chapter(content: str, chapter_index: int, open_stubs: list) -> str:
-    """处理一章：登记新 stub、兑现已有 stub，放置锚点。原地更新 open_stubs。"""
-    if not content or "```tool" not in content:
-        return content
+def _edit_content(content: str, chapter_index: int, taken_ids: set, resolvable: dict):
+    """纯函数：编辑本章 content，登记/兑现 stub 不直接落库，而是返回操作清单。
 
-    by_id = {s["id"]: s for s in open_stubs}
+    - taken_ids: 已占用的 id 集合（用于新 stub 去重；调用方负责包含「已登记 + 本波已缓冲」的 id）
+    - resolvable: {id: stub} 可被兑现的（前文已登记且尚未兑现）stub；同一波内重复兑现同一 id 会被丢弃
+    返回 (new_content, new_stubs, resolved_ops)；resolved_ops 为 [(sid, dst_chapter)]。
+    """
+    new_stubs = []
+    resolved_ops = []
+    local_taken = set(taken_ids)
+    claimed = set()  # 本次调用已认领兑现的 id（防同一段落内重复 resolve）
 
     def repl(m):
         raw = m.group(1).strip()
         try:
             spec = json.loads(raw)
         except json.JSONDecodeError:
-            return m.group(0)  # 非法 JSON 保留原块，交给后续 content_tools 处理
+            return m.group(0)
         tool = (spec.get("tool") or "").lower()
 
         if tool == "stub":
-            sid = _slug(spec.get("id") or f"c{chapter_index}_{len(open_stubs)}")
-            # 避免重复 id
+            sid = _slug(spec.get("id") or f"c{chapter_index}_{len(new_stubs)}")
             base, k = sid, 1
-            while sid in by_id:
+            while sid in local_taken:
                 sid = f"{base}_{k}"; k += 1
-            stub = {
+            local_taken.add(sid)
+            new_stubs.append({
                 "id": sid,
                 "where": spec.get("where", ""),
                 "what": spec.get("what", ""),
                 "source_chapter": chapter_index,
                 "src_anchor": f"s_{sid}",
                 "resolved": False,
-            }
-            open_stubs.append(stub)
-            by_id[sid] = stub
-            # 源处放锚点（待 stitch 时追加跳转链接）
+            })
             return f"`⚓s_{sid}`"
 
         if tool == "resolve":
             sid = _slug(spec.get("id") or "")
-            stub = by_id.get(sid)
-            if not stub or stub.get("resolved"):
-                return ""  # 找不到对应 stub 或已兑现，丢弃该块
-            stub["resolved"] = True
-            stub["dst_chapter"] = chapter_index
-            stub["dst_anchor"] = f"d_{sid}"
-            # 目标处放锚点 + 返回源的反向链接
+            if sid not in resolvable or sid in claimed:
+                return ""  # 不存在 / 已被（含本波其它章节）认领 → 丢弃
+            claimed.add(sid)
+            resolved_ops.append((sid, chapter_index))
             return f"`⚓d_{sid}`\n\n[↩ 返回前文](#s_{sid})"
 
-        # 其它工具（table/svg/未知）原样保留，交给 content_tools
-        return m.group(0)
+        return m.group(0)  # 其它工具原样保留，交给 content_tools
 
-    return TOOL_BLOCK_RE.sub(repl, content)
+    return TOOL_BLOCK_RE.sub(repl, content), new_stubs, resolved_ops
+
+
+def _commit_ops(open_stubs: list, new_stubs: list, resolved_ops: list):
+    """把 _edit_content 产出的操作落到 open_stubs（调用方需保证单线程/持锁）。"""
+    open_stubs.extend(new_stubs)
+    by_id = {s["id"]: s for s in open_stubs}
+    for sid, dchap in resolved_ops:
+        stub = by_id.get(sid)
+        if stub and not stub.get("resolved"):
+            stub["resolved"] = True
+            stub["dst_chapter"] = dchap
+            stub["dst_anchor"] = f"d_{sid}"
+
+
+def process_chapter(content: str, chapter_index: int, open_stubs: list) -> str:
+    """处理一章：登记新 stub、兑现已有 stub，放置锚点。立即落库（串行/非冻结路径）。"""
+    if not content or "```tool" not in content:
+        return content
+    taken = {s["id"] for s in open_stubs}
+    resolvable = {s["id"]: s for s in open_stubs if not s.get("resolved")}
+    new_content, new_stubs, resolved_ops = _edit_content(content, chapter_index, taken, resolvable)
+    _commit_ops(open_stubs, new_stubs, resolved_ops)
+    return new_content
 
 
 def stitch(chapters: list, open_stubs: list) -> None:
@@ -121,24 +142,70 @@ def stitch(chapters: list, open_stubs: list) -> None:
 
 
 class StubStore:
-    """线程安全的 stub 仓库。章节并发执行时，对 open_stubs 的读/写都过锁。"""
+    """线程安全的 stub 仓库 + 并发一致性控制。
+
+    并发步（parallel wave）执行期间，章节的「读快照→长时间 LLM 生成→写回」是个长窗口，
+    若期间另一章登记了 stub，本章用的是步前快照——这就是 stale read。为消除这种时序不确定，
+    引入「冻结 + 延迟提交 + barrier」：
+      · freeze()：进并发步前冻结。期间 prompt() 一律返回**步前的同一份快照**（所有并发章节看到
+        的待办完全一致，与谁先调无关）；process() 不直接落库，登记/兑现操作排队到缓冲区。
+      · unfreeze()：步结束、回到单线程的 barrier，把缓冲区操作统一提交，对下一步可见。
+    串行步不冻结：单线程，process() 立即落库，下一章天然读到最新。
+    """
 
     def __init__(self):
         self._stubs = []
         self._lock = threading.RLock()
+        self._frozen = False
+        self._frozen_snapshot = []   # 冻结时拍下的步前待办（prompt 期间恒定）
+        self._wave_new = []          # 本波缓冲：新登记的 stub
+        self._wave_resolved = {}     # 本波缓冲：{sid: dst_chapter} 已认领的兑现
 
     def prompt(self) -> str:
-        """快照当前待办，生成注入章节 prompt 的说明。"""
         with self._lock:
-            return stubs_prompt(list(self._stubs))
+            base = self._frozen_snapshot if self._frozen else self._stubs
+            return stubs_prompt(list(base))
 
     def process(self, content: str, chapter_index: int) -> str:
-        """登记/兑现本章 stub（加锁）。"""
+        if not content or "```tool" not in content:
+            return content
         with self._lock:
-            return process_chapter(content, chapter_index, self._stubs)
+            if not self._frozen:
+                # 串行/非并发：立即落库
+                return process_chapter(content, chapter_index, self._stubs)
+            # 冻结中：基于「步前快照」做兑现查找、用「已登记+本波缓冲」做去重，操作进缓冲区
+            taken = {s["id"] for s in self._stubs} | {s["id"] for s in self._wave_new}
+            resolvable = {
+                s["id"]: s for s in self._frozen_snapshot
+                if not s.get("resolved") and s["id"] not in self._wave_resolved
+            }
+            new_content, new_stubs, resolved_ops = _edit_content(content, chapter_index, taken, resolvable)
+            self._wave_new.extend(new_stubs)
+            for sid, dchap in resolved_ops:
+                self._wave_resolved.setdefault(sid, dchap)  # 先到先得，防同一波重复兑现
+            return new_content
+
+    def freeze(self):
+        """进并发步前调用：冻结，prompt 锁定步前快照，写操作转入缓冲。"""
+        with self._lock:
+            self._frozen = True
+            self._frozen_snapshot = list(self._stubs)
+            self._wave_new = []
+            self._wave_resolved = {}
+
+    def unfreeze(self) -> bool:
+        """并发步结束的 barrier：单线程统一提交缓冲操作。返回是否有变更。"""
+        with self._lock:
+            changed = bool(self._wave_new or self._wave_resolved)
+            resolved_ops = list(self._wave_resolved.items())
+            _commit_ops(self._stubs, self._wave_new, resolved_ops)
+            self._frozen = False
+            self._frozen_snapshot = []
+            self._wave_new = []
+            self._wave_resolved = {}
+            return changed
 
     def stitch(self, chapters: list) -> None:
-        """全书缝合（此时通常已单线程，仍加锁以防万一）。"""
         with self._lock:
             stitch(chapters, self._stubs)
 

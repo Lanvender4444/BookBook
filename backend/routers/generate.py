@@ -361,11 +361,32 @@ def run_generation_task(
             idxs = step["chapters"]
             if step["mode"] == "parallel" and len(idxs) > 1 and max_workers > 1:
                 from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                    futs = {idx: pool.submit(_gen_one_chapter, idx, outline["chapters"][idx]) for idx in idxs}
-                    for idx, fut in futs.items():
-                        chapter_results[idx] = fut.result()
+                # 冻结意图表 + stub 仓库：并发期间所有章节读到同一份「步前快照」，
+                # 各自的写操作（改意图表 / 登记兑现 stub）排队，待本步结束的 barrier 单线程统一提交。
+                # 这样消除"某章中途改写、其它章节正在跑"导致的 stale read 时序不确定。
+                if plan_agent is not None and plan_agent.ready:
+                    plan_agent.freeze()
+                if enable_stub:
+                    stub_store.freeze()
+                try:
+                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                        futs = {idx: pool.submit(_gen_one_chapter, idx, outline["chapters"][idx]) for idx in idxs}
+                        for idx, fut in futs.items():
+                            chapter_results[idx] = fut.result()
+                finally:
+                    # barrier：本步章节全部结束，此刻单线程，统一提交缓冲的写操作 → 下一步可见
+                    if enable_stub:
+                        stub_store.unfreeze()
+                    if plan_agent is not None and plan_agent.ready:
+                        if plan_agent.unfreeze():
+                            task_status[history_id]["progress"] = {
+                                "stage": "plan_consult",
+                                "message": f"[barrier] 意图表已在并发步结束后更新（v{plan_agent.version()}）",
+                                "total_chapters": total_chapters,
+                                "outline": outline,
+                            }
             else:
+                # 串行步：单线程，改表立即生效，下一章天然读到最新（无陈旧读）
                 for idx in idxs:
                     if _cancelled():
                         break
