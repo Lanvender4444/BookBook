@@ -72,6 +72,8 @@
     "stubHint": "允许 AI 在前面章节登记“留到后文展开”的占位，后文兑现时自动生成可跳转的交叉引用链接。",
     "concurrency": "章节并发生成",
     "concurrencyHint": "大纲生成后，路由器分析章节依赖关系，把互不依赖的章节并行生成，加快出书速度。",
+    "meaning": "意图表（Plan 总规划）",
+    "meaningHint": "Plan 生成全书与各章的意图表（含前后衔接）；调度与写作时各环节可向 Plan 咨询，意图表仅 Plan 可改。",
     "research": "智能研究（ReAct）",
     "researchHint": "每章生成前，AI 会思考是否需要联网搜索或查本地知识库，再下笔。",
     "researchLog": "研究过程",

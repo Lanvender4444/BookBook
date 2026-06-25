@@ -27,6 +27,7 @@ class GenerateRequest(BaseModel):
     enable_stub: bool = False  # 跨章占位 Stub：前向引用与自动跳转链接
     enable_concurrency: bool = False  # 章节并发：路由分析依赖后并行生成无依赖章节
     max_concurrency: int = 3  # 并发上限（避免触发 LLM 限流）
+    enable_meaning: bool = False  # Plan 生成意图表(Meaning Table)，Route/Execute 可向 Plan 咨询
 
 
 def _load_card(card_id: str | None):
@@ -39,6 +40,46 @@ def _load_card(card_id: str | None):
         return db.query(WritingCard).filter(WritingCard.id == card_id).first()
     finally:
         db.close()
+
+
+def _maybe_consult_plan(plan_agent, index, chapter, language, provider_id, model_name) -> str:
+    """Execute 层：本章线程先思考「是否需要向 Plan 提问详细意图」，需要才咨询（只读）。
+
+    返回要注入写作 prompt 的意图说明（可能为空）。绝不修改意图表。
+    """
+    from services.llm_service import get_llm_service
+
+    # 先让本章自评是否需要咨询（一次轻量判断）
+    try:
+        svc = get_llm_service(provider_id, model_name)
+        judge_sys = (
+            "你即将撰写某一章，但拿不准它在全书中的确切意图/前后衔接时，可以向总规划者(Plan)咨询。"
+            '只输出 JSON：{"ask": true/false, "question": "若 ask=true，给出你想问 Plan 的具体问题"}。'
+            "仅当确有不确定时才 ask=true。"
+        )
+        judge_user = f"章节{index + 1}：{chapter.get('title','')}\n概要：{chapter.get('summary','')}"
+        raw = svc.generate_sync(judge_sys, judge_user, max_tokens=300)
+        import json as _json, re as _re
+        m = _re.search(r"\{[\s\S]*\}", raw or "")
+        decision = _json.loads(m.group(0)) if m else {}
+    except Exception:
+        decision = {}
+
+    if not decision.get("ask"):
+        # 不主动提问也注入一份本章意图切片（来自 Plan 的只读表），让写作贴合规划
+        return plan_agent.chapter_intent_note(index)
+
+    res = plan_agent.consult(
+        asker=f"第{index + 1}章",
+        question=decision.get("question", "本章的确切意图与前后衔接是什么？"),
+        locator={"scope": "chapter", "index": index},
+        allow_modify=False,  # Execute 只读，不改意图表
+    )
+    note = plan_agent.chapter_intent_note(index)
+    reply = (res.get("reply") or "").strip()
+    if reply:
+        note = (note + f"\n【Plan 答复】{reply}").strip()
+    return note
 
 
 def _card_source_ids(card) -> list:
@@ -100,6 +141,7 @@ def run_generation_task(
     enable_stub: bool = False,
     enable_concurrency: bool = False,
     max_concurrency: int = 3,
+    enable_meaning: bool = False,
 ):
     """在后台线程中运行生成任务"""
     import threading
@@ -160,9 +202,22 @@ def run_generation_task(
             "outline": outline,
         }
 
-        # ---- Plan-and-Execute：路由分析并发波，再逐波执行（每章独立 ReAct） ----
+        # ---- Plan 阶段：生成 Meaning Table（意图表），Plan 独占其写权限 ----
+        plan_agent = None
+        if enable_meaning:
+            from services.plan_agent import PlanAgent
+            plan_agent = PlanAgent(provider_id, model_name, language)
+            tbl = plan_agent.build(outline, prompt, requirements)
+            task_status[history_id]["progress"] = {
+                "stage": "meaning",
+                "message": ("意图表已生成（全书 + 各章意图与前后衔接）" if tbl else "意图表生成失败，按普通流程继续"),
+                "total_chapters": len(outline["chapters"]),
+                "outline": outline,
+            }
+
+        # ---- Plan → Route → Execute 三层：Route 产出调度表，Execute 照表执行 ----
         from services.stub_service import StubStore
-        from services.chapter_router import plan_waves
+        from services.chapter_router import plan_schedule, describe_schedule
         from services.agent_tools import web_search_configured
 
         stub_store = StubStore()          # 线程安全的 stub 仓库（读写过锁）
@@ -171,8 +226,27 @@ def run_generation_task(
         done_count = {"n": 0}
         progress_lock = threading.Lock()
 
-        # 路由：哪些章节可以并发
-        waves = plan_waves(outline, provider_id, model_name, enabled=enable_concurrency)
+        # Route 层：判定章节耦合度，产出调度表（哪些串行、哪些并行）
+        # Route 携带意图表，并可带疑问 + 定位向 Plan 咨询（Plan 可能据此修订意图表）
+        def _on_plan(ev):
+            task_status[history_id]["progress"] = {
+                "stage": "plan_consult",
+                "message": f"[{ev.get('asker')}→Plan] {ev.get('reply','')[:160]}" + ("（已修订意图表）" if ev.get("modified") else ""),
+                "total_chapters": len(outline["chapters"]),
+                "outline": outline,
+            }
+
+        schedule = plan_schedule(
+            outline, provider_id, model_name, enabled=enable_concurrency,
+            plan_agent=plan_agent, on_plan=_on_plan,
+        )
+        task_status[history_id]["progress"] = {
+            "stage": "route",
+            "message": "调度计划：" + describe_schedule(schedule),
+            "schedule": schedule,
+            "total_chapters": total_chapters,
+            "outline": outline,
+        }
 
         def _cancelled():
             return task_status.get(history_id, {}).get("cancelled")
@@ -227,6 +301,23 @@ def run_generation_task(
             if research_notes:
                 merged_card_context = (merged_card_context + "\n\n" + research_notes).strip()
 
+            # Execute → Plan 咨询：本章线程自行决定「是否向 Plan 提问详细意图」（只读，不改意图表）
+            if plan_agent is not None and plan_agent.ready:
+                try:
+                    note = _maybe_consult_plan(plan_agent, i, chapter, language, provider_id, model_name)
+                    if note:
+                        merged_card_context = (merged_card_context + "\n\n" + note).strip()
+                        with progress_lock:
+                            task_status[history_id]["progress"] = {
+                                "stage": "plan_consult",
+                                "message": f"[第{i+1}章→Plan] 已获取意图澄清",
+                                "current_chapter": done_count["n"],
+                                "total_chapters": total_chapters,
+                                "outline": outline,
+                            }
+                except Exception as e:
+                    print(f"[Plan] execute consult failed (ch{i}): {e}")
+
             # stub 待办（加锁快照）注入 prompt
             stub_note = stub_store.prompt() if enable_stub else ""
 
@@ -259,22 +350,23 @@ def run_generation_task(
                 }
             return content
 
-        # 逐波执行：波内并发，波间串行（后波可见前波登记的 stub）
-        max_workers = max(1, min(int(max_concurrency or 1), 4)) if enable_concurrency else 1
-        for wave in waves:
+        # Execute 层：照调度表从上到下执行。serial 步顺序写；parallel 步并发写。
+        max_workers = max(1, min(int(max_concurrency or 1), 4))
+        for step in schedule:
             if _cancelled():
                 db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update({"status": "deleted"})
                 db.commit()
                 task_status[history_id]["status"] = "cancelled"
                 return
-            if max_workers > 1 and len(wave) > 1:
+            idxs = step["chapters"]
+            if step["mode"] == "parallel" and len(idxs) > 1 and max_workers > 1:
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                    futs = {idx: pool.submit(_gen_one_chapter, idx, outline["chapters"][idx]) for idx in wave}
+                    futs = {idx: pool.submit(_gen_one_chapter, idx, outline["chapters"][idx]) for idx in idxs}
                     for idx, fut in futs.items():
                         chapter_results[idx] = fut.result()
             else:
-                for idx in wave:
+                for idx in idxs:
                     if _cancelled():
                         break
                     chapter_results[idx] = _gen_one_chapter(idx, outline["chapters"][idx])
@@ -376,6 +468,7 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         request.enable_stub,
         request.enable_concurrency,
         request.max_concurrency,
+        request.enable_meaning,
     )
 
     async def event_generator():

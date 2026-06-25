@@ -121,7 +121,9 @@ function Generate() {
   const [enableRich, setEnableRich] = useState(true)
   const [enableStub, setEnableStub] = useState(false)
   const [enableConcurrency, setEnableConcurrency] = useState(false)
+  const [enableMeaning, setEnableMeaning] = useState(false)
   const [researchLog, setResearchLog] = useState([])
+  const [scheduleText, setScheduleText] = useState('')
   const [showSearchConfig, setShowSearchConfig] = useState(false)
   const activeModel = useStore((s) => s.activeModel)
   const navigate = useNavigate()
@@ -221,6 +223,19 @@ function Generate() {
       setTotalChapters(data.outline.chapters?.length || 0)
     }
 
+    // Route 层：调度计划
+    if (data.stage === 'route') {
+      setScheduleText(data.message || '')
+    }
+
+    // Plan 相关：意图表生成 / Plan 咨询
+    if (data.stage === 'meaning' || data.stage === 'plan_consult') {
+      setResearchLog((prev) => [
+        ...prev.slice(-40),
+        { stage: data.stage === 'meaning' ? 'meaning' : 'plan', message: data.message || '', chapter: (data.current_chapter ?? 0) + 1, ts: Date.now() + Math.random() },
+      ])
+    }
+
     // ReAct 研究过程：思考 / 调用工具 / 观察
     if (data.stage === 'research') {
       setResearchLog((prev) => [
@@ -297,6 +312,7 @@ function Generate() {
     setTotalChapters(0)
     setHistoryId(null)
     setResearchLog([])
+    setScheduleText('')
     setStatusMessage(t('generate.preparing'))
 
     try {
@@ -314,6 +330,7 @@ function Generate() {
           enable_rich: enableRich,
           enable_stub: enableStub,
           enable_concurrency: enableConcurrency,
+          enable_meaning: enableMeaning,
           tags: parseTags(tagsInput),
         }),
         signal
@@ -481,6 +498,29 @@ function Generate() {
           </div>
         </label>
 
+        {/* Plan 意图表：Plan 生成意图表，Route/Execute 可向 Plan 咨询 */}
+        <label className={`mt-4 flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+          enableMeaning ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-gray-300'
+        } ${generating ? 'opacity-60 pointer-events-none' : ''}`}>
+          <input
+            type="checkbox"
+            checked={enableMeaning}
+            onChange={(e) => setEnableMeaning(e.target.checked)}
+            disabled={generating}
+            className="mt-0.5 accent-indigo-600 w-4 h-4"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-800">
+              {t('generate.meaning') === 'generate.meaning' ? '意图表（Plan 总规划）' : t('generate.meaning')}
+            </span>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {t('generate.meaningHint') === 'generate.meaningHint'
+                ? 'Plan 生成全书与各章的意图表（含前后衔接）；调度与写作时各环节可向 Plan 咨询，意图表仅 Plan 可改。'
+                : t('generate.meaningHint')}
+            </p>
+          </div>
+        </label>
+
         {/* 章节并发：路由分析依赖后并行生成 */}
         <label className={`mt-4 flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
           enableConcurrency ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-gray-300'
@@ -591,20 +631,23 @@ function Generate() {
           {statusMessage && (
             <p className="text-sm text-gray-600 mt-3 text-center">{statusMessage}</p>
           )}
+          {enableConcurrency && scheduleText && (
+            <p className="text-xs text-indigo-500 mt-2 text-center">🗺 {scheduleText}</p>
+          )}
           {historyId && (
             <p className="text-xs text-gray-400 mt-2 text-center">
               {t('generate.taskRunning').replace('{id}', historyId)}
             </p>
           )}
 
-          {/* ReAct 研究活动日志 */}
-          {enableResearch && researchLog.length > 0 && (
+          {/* ReAct 研究 / Plan 咨询活动日志 */}
+          {(enableResearch || enableMeaning) && researchLog.length > 0 && (
             <div className="mt-4 border border-gray-100 rounded-lg bg-gray-50 p-3 max-h-56 overflow-y-auto space-y-1.5">
               <p className="text-xs font-medium text-gray-500 mb-1">
                 {t('generate.researchLog') === 'generate.researchLog' ? '研究过程' : t('generate.researchLog')}
               </p>
               {researchLog.map((r) => {
-                const icon = r.stage === 'thought' ? '💭' : r.stage === 'tool' ? (r.tool === 'web_search' ? '🌐' : '📚') : r.stage === 'observation' ? '🔍' : '•'
+                const icon = r.stage === 'thought' ? '💭' : r.stage === 'tool' ? (r.tool === 'web_search' ? '🌐' : '📚') : r.stage === 'observation' ? '🔍' : r.stage === 'meaning' ? '🗂' : r.stage === 'plan' ? '🧭' : '•'
                 return (
                   <div key={r.ts} className="text-xs text-gray-600 flex gap-1.5 animate-dropdown">
                     <span className="shrink-0">{icon}</span>

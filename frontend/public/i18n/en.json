@@ -72,6 +72,8 @@
     "stubHint": "Let the AI register a 'cover this later' placeholder in earlier chapters; when fulfilled later, a clickable cross-reference link is generated automatically.",
     "concurrency": "Concurrent chapter generation",
     "concurrencyHint": "After the outline, a router analyzes chapter dependencies and generates independent chapters in parallel to speed things up.",
+    "meaning": "Meaning Table (Plan)",
+    "meaningHint": "Plan builds an intent table for the whole book and each chapter (with before/after links); Route and Execute can consult Plan, and only Plan may modify the table.",
     "research": "Smart research (ReAct)",
     "researchHint": "Before each chapter, the AI decides whether to web-search or query the local knowledge base.",
     "researchLog": "Research activity",
