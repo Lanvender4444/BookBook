@@ -23,6 +23,7 @@ dependencies = [
     "Pillow>=10.0.0",
     "lancedb>=0.13.0",
     "pyarrow>=14.0.0",
+    "langchain-text-splitters>=0.2.0",
 ]
 
 [build-system]

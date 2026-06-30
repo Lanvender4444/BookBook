@@ -22,3 +22,6 @@ svglib>=1.5.0
 # 缺失时 rag_service 自动回落到纯 Python（BM25 + 暴力余弦 + RRF）。
 lancedb>=0.13.0
 pyarrow>=14.0.0
+# 分块：langchain 的递归分隔符切分器（只装这个子包，纯 Python、全平台，不拉整个 langchain）。
+# 缺失时 rag_service 自动回落到手写分块。
+langchain-text-splitters>=0.2.0

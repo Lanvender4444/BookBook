@@ -134,10 +134,41 @@ def get_source_text(source: KnowledgeSource) -> str:
 
 # ---------------------------------------------------------------- 分块
 
+# 递归分隔符优先级：先在段落边界切，不够再退到换行、中英文句末标点、逗号、空格，
+# 最后才退到「按字符硬切」。这样长段落会优先在句子边界断开，而不是从句中间切断。
+_SPLIT_SEPARATORS = [
+    "\n\n", "\n",
+    "。", "！", "？", "；",          # 中文句末/分句标点
+    ". ", "! ", "? ", "; ",          # 英文句末（带空格，避免误切小数/缩写）
+    "，", ", ", "、", " ", "",        # 退而求其次：逗号、空格、字符
+]
+
+
 def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    """分块：优先用 langchain 的递归分隔符切分（按句子边界回退），未装则回落手写实现。"""
     text = re.sub(r"\r\n?", "\n", text).strip()
     if not text:
         return []
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=size,
+            chunk_overlap=overlap,
+            separators=_SPLIT_SEPARATORS,
+            keep_separator=True,       # 保留标点，断句后句子仍完整
+            length_function=len,
+        )
+        chunks = [c.strip() for c in splitter.split_text(text) if c.strip()]
+        if chunks:
+            return chunks
+    except Exception as e:
+        print(f"[RAG] langchain splitter unavailable, fallback: {e}")
+    return _chunk_fallback(text, size, overlap)
+
+
+def _chunk_fallback(text: str, size: int, overlap: int) -> list[str]:
+    """零依赖回落：段落优先 + 超长段落硬切 + 块间重叠。"""
     paragraphs = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
     chunks, current = [], ""
     for para in paragraphs:
