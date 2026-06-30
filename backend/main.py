@@ -67,16 +67,7 @@ async def startup():
         print(f"[DB] init_db() FAILED: {e}")
         import traceback
         traceback.print_exc()
-    # 自动用 Docker 以 sidecar 式拉起本机 Milvus（后台线程，不阻塞启动；失败则回落 SQLite/BM25）
-    try:
-        from config import MILVUS_AUTOSTART
-        if MILVUS_AUTOSTART:
-            import threading
-            from services.milvus_manager import ensure_started
-            threading.Thread(target=ensure_started, daemon=True).start()
-            print("[Milvus] autostart thread launched")
-    except Exception as e:
-        print(f"[Milvus] autostart failed: {e}")
+    # 向量库改用嵌入式 LanceDB，无需启动外部服务（缺失时自动回落纯 Python 检索）
     # 种子化内置风格库/写作指导（失败不阻塞启动）
     try:
         from builtin_library import seed_builtins

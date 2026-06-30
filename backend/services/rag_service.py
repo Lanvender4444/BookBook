@@ -1,10 +1,13 @@
-"""RAG 服务：文档解析、分块、向量化（Embedding API）、检索（向量余弦 / BM25 降级）。
+"""RAG 服务：文档解析、分块、向量化（Embedding API）、混合检索（BM25 + 向量 + RRF 重排）。
 
 设计要点：
-- 向量用激活的 LLM 厂商 embedding 接口；厂商无 embedding（如 Anthropic）时自动降级 BM25
-- 向量以 numpy float32 bytes 存 SQLite（KnowledgeChunk.embedding），无需外部向量数据库
-- 四类知识源：writing_guide / style / reference / continuation
-- 续写(continuation)特殊处理：除检索外固定携带文档"尾部"内容，用于生成后续情节
+- 向量用激活的 LLM 厂商 embedding 接口；厂商无 embedding（如 Anthropic）时只走 BM25。
+- 检索后端分两条路，按可用性自动选择：
+    A. LanceDB（嵌入式向量库，全平台）：原生 BM25(全文) + 向量 + 内置 RRF 混合重排；
+    B. 纯 Python 回落：BM25 候选 + SQLite 内嵌向量暴力余弦候选 + 手写 RRF 融合。
+  任一缺失都不影响功能。
+- 四类知识源：writing_guide / style / reference / continuation。
+- 续写(continuation)特殊处理：除检索外固定携带文档"尾部"内容，用于生成后续情节。
 """
 
 import math
@@ -311,7 +314,7 @@ def index_source(source_id: str) -> dict:
             if not chunks:
                 raise ExtractError("文档内容为空")
 
-            # 清旧块（SQLite 文本/元数据）与旧向量（Milvus）
+            # 清旧块（SQLite 文本/元数据）与旧向量/全文索引（LanceDB）
             db.query(KnowledgeChunk).filter(KnowledgeChunk.source_id == source_id).delete()
             vector_store.delete_by_source(source_id)
 
@@ -334,19 +337,21 @@ def index_source(source_id: str) -> dict:
             if embedded:
                 vectors, model = embedded
                 wrote_milvus = False
+                wrote_vdb = False
                 if vector_store.available():
                     mrows = [
-                        {"id": rows[i].id, "source_id": source_id, "vector": list(vectors[i])}
+                        {"id": rows[i].id, "source_id": source_id,
+                         "text": chunks[i], "vector": list(vectors[i])}
                         for i in range(len(rows))
                     ]
-                    wrote_milvus = vector_store.upsert(mrows)
-                if wrote_milvus:
-                    # 向量入 Milvus；SQLite 仅记录用的模型，不再冗余存 bytes
+                    wrote_vdb = vector_store.upsert(mrows)
+                if wrote_vdb:
+                    # 向量 + 文本入 LanceDB（它建 BM25 与向量索引）；SQLite 仅记录模型，不冗余存 bytes
                     for row in rows:
                         row.embedding_model = model
                     status = "ready"
                 else:
-                    # Milvus 不可用/写失败 → 回落把向量存进 SQLite（原暴力检索路径）
+                    # LanceDB 不可用/写失败 → 回落把向量存进 SQLite（纯 Python 暴力检索路径）
                     for i, row in enumerate(rows):
                         row.embedding = _vec_to_bytes(vectors[i])
                         row.embedding_model = model
@@ -365,11 +370,51 @@ def index_source(source_id: str) -> dict:
         db.close()
 
 
+# ---------------------------------------------------------------- 混合检索 + 重排
+
+# 召回候选池大小（每路各取这么多再融合）；RRF 常数 k=60 是论文/业界默认
+CANDIDATE_K = 20
+RRF_K = 60
+
+
+def _top_indices(scores: list[float], pool: int) -> list[int]:
+    """按分数降序取前 pool 个的下标（分数 > 0 才要），返回排名顺序的下标列表。"""
+    order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+    out = []
+    for i in order:
+        if scores[i] <= 0:
+            break
+        out.append(i)
+        if len(out) >= pool:
+            break
+    return out
+
+
+def _rrf_fuse(rank_lists: list[list[int]], weights: list[float] = None, k: int = RRF_K) -> dict:
+    """Reciprocal Rank Fusion：用「排名」而非「原始分数」融合多路召回。
+
+    每个候选在某一路里排名 r（从 0 起）贡献 w / (k + r + 1)；累加得到融合分。
+    优点：BM25 分与余弦相似度量纲完全不同、无法直接相加，而 RRF 只看名次，天然可比、稳健。
+    返回 {chunk_index: 融合分}。
+    """
+    weights = weights or [1.0] * len(rank_lists)
+    fused: dict[int, float] = {}
+    for rl, w in zip(rank_lists, weights):
+        for rank, idx in enumerate(rl):
+            fused[idx] = fused.get(idx, 0.0) + w / (k + rank + 1)
+    return fused
+
+
 # ---------------------------------------------------------------- 检索
 
-def retrieve(query: str, source_ids: list[str], top_k: int = 5) -> list[dict]:
-    """跨多个知识源检索 top_k 相关分块。
-    检索后端优先级：Milvus 向量检索 → SQLite 内嵌向量暴力余弦 → BM25 关键词。
+def retrieve(query: str, source_ids: list[str], top_k: int = 5,
+             bm25_weight: float = 1.0, vector_weight: float = 1.0) -> list[dict]:
+    """混合检索（hybrid retrieval + rerank）：
+
+      路径 A（装了 LanceDB）：直接用 LanceDB 的混合检索 —— 全文 BM25 + 向量 + 内置 RRF 重排。
+      路径 B（无 LanceDB）：纯 Python 回落 —— BM25 候选 + SQLite 暴力余弦候选 + 手写 RRF 融合。
+    无 embedding 能力（如 Anthropic）时只走 BM25/全文；两路都没有则返回空。
+    bm25_weight / vector_weight 仅作用于路径 B 的 RRF 加权。
     """
     if not source_ids:
         return []
@@ -384,53 +429,60 @@ def retrieve(query: str, source_ids: list[str], top_k: int = 5) -> list[dict]:
         if not chunks:
             return []
 
-        def _fmt(score, c, s):
+        n = len(chunks)
+        texts = [c.text for c, _ in chunks]
+        pool = max(top_k * 4, CANDIDATE_K)
+        cmap = {c.id: (c, s) for c, s in chunks}  # chunk_id → (chunk, source)
+
+        def _fmt(score, c, s, backend):
             return {
                 "source_id": c.source_id,
                 "source_name": s.name,
                 "category": s.category,
                 "prompt": s.prompt,
                 "text": c.text,
-                "score": round(float(score), 4),
+                "score": round(float(score), 6),
+                "match": backend,  # lancedb-hybrid / lancedb-fts / py-hybrid / py-bm25（调试用）
             }
 
-        # 1) 优先 Milvus 向量检索（向量在 Milvus，按 chunk_id 映射回 SQLite 文本/元数据）
+        # query embedding（无 embedding 能力的厂商会返回 None）
+        try:
+            qres = embed_texts([query])
+        except Exception as e:
+            print(f"[RAG] query embedding failed: {e}")
+            qres = None
+        qvec = qres[0][0] if qres else None
+
+        # ========== 路径 A：专门向量库 LanceDB（BM25 + 向量 + 内置 RRF）==========
         if vector_store.available():
             try:
-                qres = embed_texts([query])
-                if qres:
-                    qvec = qres[0][0]
-                    hits = vector_store.search(qvec, source_ids, top_k)
-                    # 有命中即认为 Milvus 已应答（即便过滤后为空，也不再回落，避免重复检索）；
-                    # 仅当 Milvus 完全无命中（如该源是 SQLite 旧索引）才继续回落。
-                    if hits:
-                        cmap = {c.id: (c, s) for c, s in chunks}
-                        return [
-                            _fmt(sim, *cmap[cid])
-                            for cid, sim in hits
-                            if cid in cmap and sim > 0
-                        ]
+                if qvec is not None:
+                    hits = vector_store.hybrid_search(query, qvec, source_ids, top_k)
+                    backend = "lancedb-hybrid"
+                else:
+                    hits = vector_store.fts_search(query, source_ids, top_k)
+                    backend = "lancedb-fts"
+                if hits:
+                    return [_fmt(sc, *cmap[cid], backend) for cid, sc in hits if cid in cmap]
             except Exception as e:
-                print(f"[RAG] milvus search failed, fallback: {e}")
+                print(f"[RAG] lancedb retrieve failed, fallback pure-python: {e}")
 
-        # 2) 回落：SQLite 内嵌向量暴力余弦
-        use_vectors = all(c.embedding is not None for c, _ in chunks)
-        scores = None
-        if use_vectors:
-            try:
-                result = embed_texts([query])
-                if result:
-                    qvec = result[0][0]
-                    scores = [_cosine(qvec, _bytes_to_vec(c.embedding)) for c, _ in chunks]
-            except Exception as e:
-                print(f"[RAG] query embedding failed, fallback to BM25: {e}")
+        # ========== 路径 B：纯 Python 回落（BM25 候选 + 暴力余弦候选 + RRF）==========
+        bm25_scores = _bm25_rank(query, texts)
+        bm25_rank = _top_indices(bm25_scores, pool)
 
-        # 3) 再回落：BM25 关键词
-        if scores is None:
-            scores = _bm25_rank(query, [c.text for c, _ in chunks])
+        vec_rank: list[int] = []
+        if qvec is not None and all(c.embedding is not None for c, _ in chunks):
+            cos_scores = [_cosine(qvec, _bytes_to_vec(c.embedding)) for c, _ in chunks]
+            vec_rank = _top_indices(cos_scores, pool)
 
-        ranked = sorted(zip(scores, chunks), key=lambda x: x[0], reverse=True)[:top_k]
-        return [_fmt(score, c, s) for score, (c, s) in ranked if score > 0]
+        if vec_rank:
+            fused = _rrf_fuse([bm25_rank, vec_rank], weights=[bm25_weight, vector_weight])
+            ranked = sorted(fused.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
+            return [_fmt(fs, *chunks[idx], "py-hybrid") for idx, fs in ranked]
+
+        # 只有 BM25 一路
+        return [_fmt(bm25_scores[idx], *chunks[idx], "py-bm25") for idx in bm25_rank[:top_k]]
     finally:
         db.close()
 

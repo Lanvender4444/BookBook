@@ -1,165 +1,231 @@
-"""Milvus 向量存储后端。
+"""LanceDB 向量库后端（替代 Milvus）。
 
-替代原先「SQLite BLOB + 纯 Python 暴力余弦」的向量检索：
-- 向量、主键、source_id 存进 Milvus，相似检索交给 Milvus 索引；
-- 默认使用 **Milvus Lite**（嵌入式、本地单文件，无需独立服务；仅 Linux/macOS 官方支持）；
-- 通过 `config.MILVUS_URI` 可指向 Milvus 服务（如 http://localhost:19530），用于 Windows / 共享部署。
+为什么用 LanceDB：
+- **嵌入式、单目录文件**，无需独立服务进程（不像 Milvus 要起容器）；
+- **全平台 pip wheel**（Windows / macOS / Linux），PyInstaller 友好；
+- **原生同时支持向量检索 + 全文 BM25（Tantivy）+ 内置混合重排（RRF）**——
+  正好把「BM25 与 vector」都交给同一个专门的向量库完成，不必再手写。
 
-对外只暴露 4 个函数：available / upsert / search / delete_by_source。
-任何不可用情况（未装 pymilvus、连接失败、维度冲突）都安全返回，调用方（rag_service）据此
-自动回落到 SQLite 暴力检索 / BM25，保证功能不中断。
+一张表 `chunks`：
+    id        int64   主键（= KnowledgeChunk.id，用于映射回 SQLite 取元数据）
+    source_id string  归属知识源（检索范围过滤）
+    text      string  原文（建 FTS / BM25 索引）
+    vector    float32[dim]  向量（建向量索引）；dim 由首批写入决定，变化则重建表
 
-集合 schema：
-    id        INT64        主键（= KnowledgeChunk.id）
-    source_id VARCHAR(64)  归属知识源，用于检索范围过滤
-    vector    FLOAT_VECTOR 维度由首个写入向量决定；维度变化会重建集合（需重新索引）
-索引：AUTOINDEX + COSINE。
+对外暴露：available / upsert / delete_by_source / hybrid_search / fts_search / search。
+任何不可用（未装 lancedb、版本 API 不符、建索引失败）都安全返回空/False，
+调用方（rag_service）据此回落到「纯 Python BM25 + 暴力余弦 + RRF」，功能不中断。
 """
 
-import json
 import threading
-import time
 
-from config import MILVUS_URI
+TABLE = "chunks"
 
-COLLECTION = "knowledge_vectors"
-
-# 连接重试间隔：Milvus 容器自动拉起需要时间，连接失败后每隔一段时间重试一次，
-# 这样 Milvus 就绪后下一次检索/索引就能自动接上，而不是整会话卡在降级。
-_RETRY_INTERVAL = 15.0
-
-_client = None
-_last_try = 0.0
-_lock = threading.Lock()
+_db = None
+_lock = threading.RLock()
+_dim = None  # 当前表的向量维度
 
 
-def _get_client():
-    """惰性单例 + 限频重试。已连上则直接复用；未连上则每 _RETRY_INTERVAL 秒重试一次。"""
-    global _client, _last_try
-    if _client is not None:
-        return _client
-    now = time.time()
-    if now - _last_try < _RETRY_INTERVAL:
-        return None
+def _conn():
+    global _db
+    if _db is not None:
+        return _db
     with _lock:
-        if _client is not None:
-            return _client
-        if time.time() - _last_try < _RETRY_INTERVAL:
-            return None
-        _last_try = time.time()
+        if _db is not None:
+            return _db
         try:
-            from pymilvus import MilvusClient
+            import lancedb
+            from utils import get_app_data_dir
 
-            _client = MilvusClient(MILVUS_URI)
-            print(f"[Milvus] connected: {MILVUS_URI}")
+            path = str(get_app_data_dir() / "lancedb")
+            _db = lancedb.connect(path)
+            print(f"[LanceDB] connected: {path}")
         except Exception as e:
-            print(f"[Milvus] unavailable (will retry in {int(_RETRY_INTERVAL)}s), fallback for now: {e}")
-            _client = None
-        return _client
+            print(f"[LanceDB] unavailable, fallback to pure-python: {e}")
+            _db = None
+        return _db
 
 
 def available() -> bool:
-    return _get_client() is not None
+    return _conn() is not None
 
 
-def _current_dim(client):
-    """返回当前集合的向量维度；集合不存在返回 None。"""
+def _schema(dim: int):
+    import pyarrow as pa
+
+    return pa.schema([
+        pa.field("id", pa.int64()),
+        pa.field("source_id", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), dim)),
+    ])
+
+
+def _ensure_table(dim: int):
+    """确保表存在且维度匹配；维度变化则重建（清空旧向量，需重新索引全部知识源）。"""
+    global _dim
+    db = _conn()
+    if db is None:
+        return None
     try:
-        if not client.has_collection(COLLECTION):
-            return None
-        for f in client.describe_collection(COLLECTION)["fields"]:
-            if f["name"] == "vector":
-                return f.get("params", {}).get("dim")
+        names = db.table_names()
+        if TABLE in names:
+            tbl = db.open_table(TABLE)
+            cur = _vector_dim(tbl)
+            if cur is not None and cur != dim:
+                print(f"[LanceDB] embedding dim {cur} -> {dim}, recreating table")
+                db.drop_table(TABLE)
+                tbl = db.create_table(TABLE, schema=_schema(dim))
+            _dim = dim
+            return tbl
+        tbl = db.create_table(TABLE, schema=_schema(dim))
+        _dim = dim
+        return tbl
+    except Exception as e:
+        print(f"[LanceDB] ensure_table failed: {e}")
+        return None
+
+
+def _vector_dim(tbl):
+    try:
+        f = tbl.schema.field("vector")
+        return f.type.list_size  # fixed_size_list 的维度
     except Exception:
         return None
-    return None
 
 
-def _ensure_collection(client, dim: int) -> bool:
-    """确保集合存在且维度匹配；维度变化则重建（会清空旧向量，需重新索引）。"""
-    cur = _current_dim(client)
-    if cur == dim:
-        return True
+def _rebuild_fts(tbl):
+    """（重）建全文/BM25 索引。CJK 用 ngram 分词以提升中文召回；失败回退默认分词。"""
     try:
-        from pymilvus import MilvusClient, DataType
-
-        if cur is not None and cur != dim:
-            print(f"[Milvus] embedding dim changed {cur} -> {dim}, recreating collection")
-            client.drop_collection(COLLECTION)
-
-        schema = MilvusClient.create_schema(auto_id=False, enable_dynamic_field=False)
-        schema.add_field("id", DataType.INT64, is_primary=True)
-        schema.add_field("source_id", DataType.VARCHAR, max_length=64)
-        schema.add_field("vector", DataType.FLOAT_VECTOR, dim=dim)
-
-        index_params = client.prepare_index_params()
-        index_params.add_index(
-            field_name="vector", index_type="AUTOINDEX", metric_type="COSINE"
-        )
-        client.create_collection(COLLECTION, schema=schema, index_params=index_params)
-        return True
-    except Exception as e:
-        print(f"[Milvus] ensure_collection failed: {e}")
-        return False
+        tbl.create_fts_index("text", replace=True, use_tantivy=False, tokenizer_name="ngram")
+    except Exception:
+        try:
+            tbl.create_fts_index("text", replace=True)
+        except Exception as e:
+            print(f"[LanceDB] create_fts_index failed: {e}")
 
 
 def upsert(rows: list[dict]) -> bool:
-    """写入/更新向量。rows = [{'id': int, 'source_id': str, 'vector': list[float]}]。"""
+    """写入/更新分块。rows = [{'id': int, 'source_id': str, 'text': str, 'vector': list[float]}]。"""
     if not rows:
         return True
-    client = _get_client()
-    if client is None:
-        return False
     dim = len(rows[0]["vector"])
-    if not _ensure_collection(client, dim):
-        return False
-    try:
-        client.upsert(COLLECTION, rows)
-        return True
-    except Exception:
-        # 个别版本无 upsert：退回 delete + insert
+    with _lock:
+        tbl = _ensure_table(dim)
+        if tbl is None:
+            return False
         try:
-            client.delete(COLLECTION, ids=[r["id"] for r in rows])
-            client.insert(COLLECTION, rows)
+            ids = [int(r["id"]) for r in rows]
+            # 先删同 id（实现 upsert 语义），再插
+            tbl.delete(f"id IN ({','.join(map(str, ids))})")
+            tbl.add([
+                {"id": int(r["id"]), "source_id": str(r["source_id"]),
+                 "text": r.get("text", ""), "vector": list(r["vector"])}
+                for r in rows
+            ])
+            _rebuild_fts(tbl)
             return True
         except Exception as e:
-            print(f"[Milvus] upsert failed: {e}")
+            print(f"[LanceDB] upsert failed: {e}")
             return False
 
 
 def delete_by_source(source_id: str) -> None:
-    """删除某知识源的全部向量（重建索引前先清旧）。"""
-    client = _get_client()
-    if client is None:
+    db = _conn()
+    if db is None:
         return
     try:
-        if client.has_collection(COLLECTION):
-            client.delete(COLLECTION, filter=f'source_id == "{source_id}"')
+        if TABLE in db.table_names():
+            tbl = db.open_table(TABLE)
+            tbl.delete(f"source_id = '{source_id}'")
+            _rebuild_fts(tbl)
     except Exception as e:
-        print(f"[Milvus] delete_by_source failed: {e}")
+        print(f"[LanceDB] delete_by_source failed: {e}")
+
+
+def _src_filter(source_ids: list[str]) -> str:
+    quoted = ", ".join("'" + s.replace("'", "''") + "'" for s in source_ids)
+    return f"source_id IN ({quoted})"
+
+
+def _open():
+    db = _conn()
+    if db is None:
+        return None
+    try:
+        if TABLE not in db.table_names():
+            return None
+        return db.open_table(TABLE)
+    except Exception:
+        return None
+
+
+def _score_of(row) -> float:
+    for k in ("_relevance_score", "_score", "_distance"):
+        if k in row and row[k] is not None:
+            v = float(row[k])
+            return (1.0 - v) if k == "_distance" else v  # 距离越小越相似 → 转相似度
+    return 0.0
+
+
+def hybrid_search(query_text: str, query_vec: list[float], source_ids: list[str],
+                  top_k: int = 5) -> list[tuple[int, float]]:
+    """混合检索：BM25(全文) + 向量，LanceDB 内置 RRF 重排。返回 [(chunk_id, score)] best-first。"""
+    tbl = _open()
+    if tbl is None or not source_ids:
+        return []
+    try:
+        from lancedb.rerankers import RRFReranker
+        reranker = RRFReranker()
+    except Exception:
+        reranker = None
+    try:
+        q = tbl.search(query_type="hybrid").text(query_text).vector(query_vec)
+        try:
+            q = q.where(_src_filter(source_ids), prefilter=True)
+        except TypeError:
+            q = q.where(_src_filter(source_ids))
+        if reranker is not None:
+            q = q.rerank(reranker)
+        rows = q.limit(top_k).to_list()
+        return [(int(r["id"]), _score_of(r)) for r in rows]
+    except Exception as e:
+        print(f"[LanceDB] hybrid_search failed: {e}")
+        # 退化：纯向量
+        return search(query_vec, source_ids, top_k)
+
+
+def fts_search(query_text: str, source_ids: list[str], top_k: int = 5) -> list[tuple[int, float]]:
+    """纯全文 BM25 检索（无 embedding 能力时用）。返回 [(chunk_id, score)]。"""
+    tbl = _open()
+    if tbl is None or not source_ids or not query_text.strip():
+        return []
+    try:
+        q = tbl.search(query_text, query_type="fts")
+        try:
+            q = q.where(_src_filter(source_ids), prefilter=True)
+        except TypeError:
+            q = q.where(_src_filter(source_ids))
+        rows = q.limit(top_k).to_list()
+        return [(int(r["id"]), _score_of(r)) for r in rows]
+    except Exception as e:
+        print(f"[LanceDB] fts_search failed: {e}")
+        return []
 
 
 def search(query_vec: list[float], source_ids: list[str], top_k: int = 5) -> list[tuple[int, float]]:
-    """在指定 source 范围内向量检索，返回 [(chunk_id, similarity), ...]（best-first）。
-    不可用 / 无集合 / 无命中返回 []。
-    """
-    client = _get_client()
-    if client is None or not source_ids:
+    """纯向量检索（兼容旧调用）。返回 [(chunk_id, similarity)]。"""
+    tbl = _open()
+    if tbl is None or not source_ids:
         return []
     try:
-        if not client.has_collection(COLLECTION):
-            return []
-        flt = f"source_id in {json.dumps(source_ids)}"
-        res = client.search(
-            COLLECTION,
-            data=[query_vec],
-            limit=top_k,
-            filter=flt,
-            output_fields=["source_id"],
-        )
-        hits = res[0] if res else []
-        # Milvus Lite 的 COSINE 返回 distance = 1 - cos（越小越相似），统一转成相似度
-        return [(h["id"], 1.0 - float(h["distance"])) for h in hits]
+        q = tbl.search(query_vec)
+        try:
+            q = q.where(_src_filter(source_ids), prefilter=True)
+        except TypeError:
+            q = q.where(_src_filter(source_ids))
+        rows = q.metric("cosine").limit(top_k).to_list()
+        return [(int(r["id"]), _score_of(r)) for r in rows]
     except Exception as e:
-        print(f"[Milvus] search failed: {e}")
+        print(f"[LanceDB] search failed: {e}")
         return []

@@ -21,6 +21,8 @@ dependencies = [
     "pypdf>=4.0.0",
     "python-multipart>=0.0.9",
     "Pillow>=10.0.0",
+    "lancedb>=0.13.0",
+    "pyarrow>=14.0.0",
 ]
 
 [build-system]

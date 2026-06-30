@@ -17,8 +17,8 @@ python-multipart>=0.0.9
 Pillow>=10.0.0
 # 可选：让 PDF/DOCX 导出能内嵌 SVG 图（纯 Python，无系统依赖）。缺失时自动降级为图说明文字。
 svglib>=1.5.0
-# 向量数据库：Milvus 客户端（全平台可装）
-pymilvus>=2.4.0
-# Milvus Lite 嵌入式引擎：仅 Linux/macOS 有 wheel，用环境标记避免在 Windows 上安装失败。
-# Windows 用户请改连 Milvus 服务（设 MILVUS_URI=http://host:19530），或回落 SQLite 向量。
-milvus-lite>=2.4.0 ; platform_system != "Windows"
+# 向量数据库：LanceDB —— 嵌入式、单目录、全平台 wheel（Win/Mac/Linux），
+# 原生支持 向量检索 + 全文 BM25(Tantivy) + 内置 RRF 混合重排。
+# 缺失时 rag_service 自动回落到纯 Python（BM25 + 暴力余弦 + RRF）。
+lancedb>=0.13.0
+pyarrow>=14.0.0
