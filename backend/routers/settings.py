@@ -43,3 +43,37 @@ def update_search_config(req: SearchConfigRequest):
     if req.api_key is not None:
         set_setting("search_api_key", req.api_key.strip())
     return get_search_config()
+
+
+# ---------------------------------------------------------------- Cross-encoder 精排配置
+
+@router.get("/rerank")
+def get_rerank_config():
+    from services import reranker
+
+    provider = get_setting("rerank_provider", "")
+    key = get_setting("rerank_api_key", "")
+    return {
+        "provider": provider,
+        "model": get_setting("rerank_model", ""),
+        "has_key": bool(key),
+        "key_masked": _mask(key),
+        "configured": reranker.available(),
+        "supported": ["jina", "cohere", "siliconflow", "voyage", "local"],
+    }
+
+
+class RerankConfigRequest(BaseModel):
+    provider: str = ""          # jina/cohere/siliconflow/voyage/local/""
+    api_key: str | None = None  # None = 不修改；"" = 清空
+    model: str | None = None    # None = 不修改；"" = 用默认多语言模型
+
+
+@router.post("/rerank")
+def update_rerank_config(req: RerankConfigRequest):
+    set_setting("rerank_provider", (req.provider or "").lower().strip())
+    if req.api_key is not None:
+        set_setting("rerank_api_key", req.api_key.strip())
+    if req.model is not None:
+        set_setting("rerank_model", req.model.strip())
+    return get_rerank_config()

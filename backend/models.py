@@ -36,6 +36,27 @@ class GenerationHistory(Base):
     completed_at = Column(DateTime, nullable=True)
     author_id = Column(String)
     language = Column(String, nullable=True)
+    # 断点续传：创建任务时存下全部生成参数，续传时据此重启（不丢失卡片/开关/标签）
+    gen_params = Column(JSON, nullable=True)
+    # 断点续传：stub 仓库 + 意图表的最新快照，续传时恢复跨章状态
+    resume_state = Column(JSON, nullable=True)
+
+
+class ChapterDraft(Base):
+    """章节草稿：每写完一章立即落库的 checkpoint。
+
+    生成过程中各章内容不再只存在内存里——每完成一章就 upsert 一行，
+    任务中途崩溃/卡死后可据此续传：已落库的章跳过，只重跑缺失的章。
+    (history_id, chapter_index) 唯一。
+    """
+
+    __tablename__ = "chapter_drafts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    history_id = Column(Integer, index=True, nullable=False)
+    chapter_index = Column(Integer, nullable=False)
+    content = Column(Text)
+    created_at = Column(DateTime, default=func.now())
 
 
 class ShareToken(Base):

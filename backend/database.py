@@ -19,6 +19,23 @@ DATABASE_URL = f"sqlite:///{(DATA_DIR / 'ebooks.db').as_posix()}"
 print(f"[DB] DATABASE_URL={DATABASE_URL}")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 print(f"[DB] Engine created OK")
+
+
+# WAL 模式：允许一个写者与多个读者并发，且崩溃后能自动恢复，
+# 更契合"多章节线程各自落 checkpoint"的写入模式。
+from sqlalchemy import event
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_conn, _rec):
+    try:
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.execute("PRAGMA busy_timeout=8000")  # 写锁竞争时等待而非立即报错
+        cur.close()
+    except Exception as e:
+        print(f"[DB] set pragma failed: {e}")
 SessionLocal = sessionmaker(bind=engine)
 print(f"[DB] SessionLocal created OK")
 
@@ -27,6 +44,8 @@ _MIGRATIONS = [
     ("books", "tags", "JSON"),
     ("books", "word_count", "INTEGER"),
     ("writing_cards", "tags", "JSON"),
+    ("generation_history", "gen_params", "JSON"),
+    ("generation_history", "resume_state", "JSON"),
 ]
 
 

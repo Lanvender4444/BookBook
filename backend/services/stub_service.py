@@ -213,6 +213,15 @@ class StubStore:
         with self._lock:
             return list(self._stubs)
 
+    def restore(self, stubs: list) -> None:
+        """断点续传：从持久化快照恢复 stub 待办列表。"""
+        with self._lock:
+            self._stubs = [dict(s) for s in (stubs or [])]
+            self._frozen = False
+            self._frozen_snapshot = []
+            self._wave_new = []
+            self._wave_resolved = {}
+
 
 def strip_anchor_tokens(text: str) -> str:
     """导出/降级时移除锚点 token，并把内部跳转链接降级为纯文字。"""

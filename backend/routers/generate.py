@@ -142,14 +142,26 @@ def run_generation_task(
     enable_concurrency: bool = False,
     max_concurrency: int = 3,
     enable_meaning: bool = False,
+    resume: bool = False,
 ):
-    """在后台线程中运行生成任务"""
+    """在后台线程中运行生成任务。
+
+    resume=True 时为断点续传：复用已持久化的大纲、跳过已落库的章节、
+    恢复 stub/意图表快照，只补跑缺失的章节。
+    """
     import threading
     from services.llm_service import generate_outline_sync, generate_chapter_sync, get_llm_service
     from services.book_builder import save_book_sync
+    from services.checkpoint import (
+        save_chapter_draft, load_chapter_drafts, clear_chapter_drafts,
+        save_resume_state, load_resume_state,
+    )
 
     db = SessionLocal()
     try:
+        # 断点续传：预载已完成的章节草稿 + 跨章状态快照
+        resumed_drafts = load_chapter_drafts(history_id) if resume else {}
+        resume_blob = load_resume_state(history_id) if resume else {}
         # 更新状态为运行中
         task_status[history_id] = {
             "status": "running",
@@ -168,33 +180,40 @@ def run_generation_task(
 
         # 写作卡：检索 RAG 上下文（大纲阶段以用户需求为检索词）
         card = _load_card(card_id)
-        outline_ctx = _card_context_for(card, prompt, extra_requirements)
 
-        # 生成大纲（耗时操作，无法中断）
-        outline = generate_outline_sync(
-            prompt,
-            requirements,
-            provider_id=provider_id,
-            model_name=model_name,
-            card_context=outline_ctx["card_context"],
-            extra_requirements=outline_ctx["extra_requirements"],
-            has_continuation=outline_ctx["has_continuation"],
-        )
+        # 续传：若已有持久化大纲则直接复用，跳过昂贵的大纲生成
+        existing_row = db.query(GenerationHistory).filter(
+            GenerationHistory.id == history_id
+        ).first()
+        outline = existing_row.outline if (resume and existing_row and existing_row.outline) else None
 
-        # 大纲生成后再次检查取消
-        if task_status.get(history_id, {}).get("cancelled"):
-            db.query(GenerationHistory).filter(
-                GenerationHistory.id == history_id
-            ).update({"status": "deleted"})
+        if outline is None:
+            outline_ctx = _card_context_for(card, prompt, extra_requirements)
+            # 生成大纲（耗时操作，无法中断）
+            outline = generate_outline_sync(
+                prompt,
+                requirements,
+                provider_id=provider_id,
+                model_name=model_name,
+                card_context=outline_ctx["card_context"],
+                extra_requirements=outline_ctx["extra_requirements"],
+                has_continuation=outline_ctx["has_continuation"],
+            )
+
+            # 大纲生成后再次检查取消
+            if task_status.get(history_id, {}).get("cancelled"):
+                db.query(GenerationHistory).filter(
+                    GenerationHistory.id == history_id
+                ).update({"status": "deleted"})
+                db.commit()
+                task_status[history_id]["status"] = "cancelled"
+                return
+
+            # 更新大纲到历史记录
+            db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update(
+                {"outline": outline, "status": "pending"}
+            )
             db.commit()
-            task_status[history_id]["status"] = "cancelled"
-            return
-
-        # 更新大纲到历史记录
-        db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update(
-            {"outline": outline, "status": "pending"}
-        )
-        db.commit()
 
         task_status[history_id]["progress"] = {
             "stage": "outline_done",
@@ -207,10 +226,16 @@ def run_generation_task(
         if enable_meaning:
             from services.plan_agent import PlanAgent
             plan_agent = PlanAgent(provider_id, model_name, language)
-            tbl = plan_agent.build(outline, prompt, requirements)
+            if resume and resume_blob.get("plan"):
+                # 续传：从快照恢复意图表，不再调 LLM 重建
+                tbl = plan_agent.restore(resume_blob["plan"], resume_blob.get("plan_version", 0))
+                msg = "意图表已从续传快照恢复"
+            else:
+                tbl = plan_agent.build(outline, prompt, requirements)
+                msg = "意图表已生成（全书 + 各章意图与前后衔接）" if tbl else "意图表生成失败，按普通流程继续"
             task_status[history_id]["progress"] = {
                 "stage": "meaning",
-                "message": ("意图表已生成（全书 + 各章意图与前后衔接）" if tbl else "意图表生成失败，按普通流程继续"),
+                "message": msg,
                 "total_chapters": len(outline["chapters"]),
                 "outline": outline,
             }
@@ -221,9 +246,12 @@ def run_generation_task(
         from services.agent_tools import web_search_configured
 
         stub_store = StubStore()          # 线程安全的 stub 仓库（读写过锁）
+        if enable_stub and resume and resume_blob.get("stubs"):
+            stub_store.restore(resume_blob["stubs"])   # 续传：恢复 stub 待办
         total_chapters = len(outline["chapters"])
-        chapter_results = {}              # {index: content}
-        done_count = {"n": 0}
+        # 续传：预载已完成章节，schedule 执行时会跳过它们
+        chapter_results = {i: c for i, c in resumed_drafts.items() if 0 <= i < total_chapters}
+        done_count = {"n": len(chapter_results)}
         progress_lock = threading.Lock()
 
         # Route 层：判定章节耦合度，产出调度表（哪些串行、哪些并行）
@@ -351,6 +379,10 @@ def run_generation_task(
             return content
 
         # Execute 层：照调度表从上到下执行。serial 步顺序写；parallel 步并发写。
+        # 每写完一章立即落库（checkpoint）；barrier 后存一次 stub/意图表快照。
+        def _persist_state():
+            save_resume_state(history_id, stub_store if enable_stub else None, plan_agent)
+
         max_workers = max(1, min(int(max_concurrency or 1), 4))
         for step in schedule:
             if _cancelled():
@@ -358,9 +390,12 @@ def run_generation_task(
                 db.commit()
                 task_status[history_id]["status"] = "cancelled"
                 return
-            idxs = step["chapters"]
-            if step["mode"] == "parallel" and len(idxs) > 1 and max_workers > 1:
-                from concurrent.futures import ThreadPoolExecutor
+            # 续传：本步中已完成的章直接跳过，只跑缺失的
+            pending = [idx for idx in step["chapters"] if idx not in chapter_results]
+            if not pending:
+                continue
+            if step["mode"] == "parallel" and len(pending) > 1 and max_workers > 1:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
                 # 冻结意图表 + stub 仓库：并发期间所有章节读到同一份「步前快照」，
                 # 各自的写操作（改意图表 / 登记兑现 stub）排队，待本步结束的 barrier 单线程统一提交。
                 # 这样消除"某章中途改写、其它章节正在跑"导致的 stale read 时序不确定。
@@ -370,9 +405,12 @@ def run_generation_task(
                     stub_store.freeze()
                 try:
                     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                        futs = {idx: pool.submit(_gen_one_chapter, idx, outline["chapters"][idx]) for idx in idxs}
-                        for idx, fut in futs.items():
-                            chapter_results[idx] = fut.result()
+                        futs = {pool.submit(_gen_one_chapter, idx, outline["chapters"][idx]): idx for idx in pending}
+                        for fut in as_completed(futs):
+                            idx = futs[fut]
+                            content = fut.result()
+                            chapter_results[idx] = content
+                            save_chapter_draft(history_id, idx, content)  # 每章完成即落库
                 finally:
                     # barrier：本步章节全部结束，此刻单线程，统一提交缓冲的写操作 → 下一步可见
                     if enable_stub:
@@ -385,12 +423,16 @@ def run_generation_task(
                                 "total_chapters": total_chapters,
                                 "outline": outline,
                             }
+                _persist_state()  # barrier 后：stub/意图表已提交，存快照
             else:
                 # 串行步：单线程，改表立即生效，下一章天然读到最新（无陈旧读）
-                for idx in idxs:
+                for idx in pending:
                     if _cancelled():
                         break
-                    chapter_results[idx] = _gen_one_chapter(idx, outline["chapters"][idx])
+                    content = _gen_one_chapter(idx, outline["chapters"][idx])
+                    chapter_results[idx] = content
+                    save_chapter_draft(history_id, idx, content)  # 每章完成即落库
+                    _persist_state()
 
         if _cancelled():
             db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update({"status": "deleted"})
@@ -409,6 +451,9 @@ def run_generation_task(
         ai_tags = outline.get("tags") or []
         merged_tags = list(dict.fromkeys([*(user_tags or []), *ai_tags]))
         book_id = save_book_sync(db, outline, chapters, user_id, language, tags=merged_tags)
+
+        # 成功成书后清理中间草稿 checkpoint
+        clear_chapter_drafts(history_id)
 
         # 更新历史记录状态
         db.query(GenerationHistory).filter(GenerationHistory.id == history_id).update(
@@ -448,6 +493,21 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
     # 从 requirements 中提取语言信息
     language = request.requirements.get("language", "zh-CN")
 
+    # 断点续传：存下全部生成参数，续传时据此原样重启
+    gen_params = {
+        "provider_id": request.provider_id,
+        "model_name": request.model_name,
+        "card_id": request.card_id,
+        "extra_requirements": request.extra_requirements,
+        "tags": request.tags,
+        "enable_research": request.enable_research,
+        "enable_rich": request.enable_rich,
+        "enable_stub": request.enable_stub,
+        "enable_concurrency": request.enable_concurrency,
+        "max_concurrency": request.max_concurrency,
+        "enable_meaning": request.enable_meaning,
+    }
+
     # 创建历史记录
     history = GenerationHistory(
         prompt=request.prompt,
@@ -455,6 +515,7 @@ async def generate_stream(request: GenerateRequest, db: Session = Depends(get_db
         status="pending",
         author_id=user_id,
         language=language,
+        gen_params=gen_params,
     )
     db.add(history)
     db.commit()
@@ -700,6 +761,65 @@ async def cancel_generation(history_id: int, db: Session = Depends(get_db)):
         return {"message": "Cancellation requested"}
 
     return {"message": "Generation not active"}
+
+
+@router.post("/{history_id}/resume")
+async def resume_generation(history_id: int, db: Session = Depends(get_db)):
+    """断点续传：对崩溃/失败/中断的任务，复用已落库的章节，只补跑缺失的部分。"""
+    history = (
+        db.query(GenerationHistory).filter(GenerationHistory.id == history_id).first()
+    )
+    if not history:
+        raise HTTPException(status_code=404, detail="History not found")
+
+    # 已完成的无需续传
+    if history.status == "completed" and history.book_id:
+        return {"message": "already completed", "history_id": history_id, "book_id": history.book_id}
+
+    # 正在跑的不重复启动
+    cur = task_status.get(history_id)
+    if cur and cur.get("status") in ("running", "starting"):
+        return {"message": "already running", "history_id": history_id}
+
+    params = history.gen_params or {}
+
+    from services.checkpoint import load_chapter_drafts
+    done = load_chapter_drafts(history_id)
+
+    # 复位状态为 pending，供取消检查等逻辑正常工作
+    history.status = "pending"
+    history.error_message = None
+    db.commit()
+
+    task_status[history_id] = {
+        "status": "starting",
+        "progress": {"stage": "starting", "message": f"续传中：已完成 {len(done)} 章，补跑其余..."},
+        "cancelled": False,
+    }
+
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(
+        executor,
+        run_generation_task,
+        history_id,
+        history.prompt,
+        history.requirements or {},
+        history.author_id,
+        history.language or "zh-CN",
+        params.get("provider_id"),
+        params.get("model_name"),
+        params.get("card_id"),
+        params.get("extra_requirements", ""),
+        params.get("tags", []),
+        params.get("enable_research", False),
+        params.get("enable_rich", True),
+        params.get("enable_stub", False),
+        params.get("enable_concurrency", False),
+        params.get("max_concurrency", 3),
+        params.get("enable_meaning", False),
+        True,  # resume
+    )
+    return {"message": "resumed", "history_id": history_id, "resumed_chapters": len(done)}
 
 
 @router.get("/history")

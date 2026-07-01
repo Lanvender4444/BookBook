@@ -143,6 +143,18 @@ class PlanAgent:
         with self._table_lock:
             return json.loads(json.dumps(self._table)) if self._table else None
 
+    def restore(self, table: dict | None, version: int = 0) -> bool:
+        """断点续传：从持久化快照恢复意图表，跳过昂贵的 build（不再调 LLM）。"""
+        if not table or "chapters" not in table:
+            return False
+        with self._table_lock:
+            self._table = json.loads(json.dumps(table))
+            self._version = int(version or 0)
+            self._frozen = False
+            self._pending = []
+            self._ready = True
+        return True
+
     def _chapter_slice(self, index) -> dict | None:
         with self._table_lock:
             if not self._table:

@@ -27,14 +27,20 @@ function SearchConfigModal({ open, onClose }) {
   const [cfg, setCfg] = useState(null)
   const [provider, setProvider] = useState('')
   const [apiKey, setApiKey] = useState('')
+  // cross-encoder 精排
+  const [rrCfg, setRrCfg] = useState(null)
+  const [rrProvider, setRrProvider] = useState('')
+  const [rrKey, setRrKey] = useState('')
+  const [rrModel, setRrModel] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
     api.getSearchConfig().then((c) => {
-      setCfg(c)
-      setProvider(c.provider || '')
-      setApiKey('')
+      setCfg(c); setProvider(c.provider || ''); setApiKey('')
+    }).catch(() => {})
+    api.getRerankConfig().then((c) => {
+      setRrCfg(c); setRrProvider(c.provider || ''); setRrKey(''); setRrModel(c.model || '')
     }).catch(() => {})
   }, [open])
 
@@ -43,10 +49,13 @@ function SearchConfigModal({ open, onClose }) {
   const save = async () => {
     setSaving(true)
     try {
-      const body = { provider }
-      if (apiKey) body.api_key = apiKey
-      const c = await api.setSearchConfig(body)
+      const sbody = { provider }
+      if (apiKey) sbody.api_key = apiKey
+      const c = await api.setSearchConfig(sbody)
       setCfg(c)
+      const rbody = { provider: rrProvider, model: rrModel }
+      if (rrKey) rbody.api_key = rrKey
+      await api.setRerankConfig(rbody)
       onClose()
     } catch (e) {
       // ignore
@@ -58,32 +67,72 @@ function SearchConfigModal({ open, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 animate-overlay" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-2xl w-[460px] max-w-[92vw] p-6 animate-modal">
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">联网搜索配置</h2>
-        <p className="text-xs text-gray-500 mb-4">
-          智能研究的「web 搜索」工具需要一个搜索 API。支持 Tavily / Serper / Brave，自行申请 key 后填入。
-          {cfg?.configured && <span className="text-green-600 ml-1">当前已配置（{cfg.provider}）</span>}
+      <div className="relative bg-white rounded-xl shadow-2xl w-[480px] max-w-[92vw] max-h-[86vh] overflow-y-auto p-6 animate-modal">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">检索与研究配置</h2>
+
+        {/* 联网搜索 */}
+        <p className="text-xs text-gray-500 mb-2 mt-3">
+          <span className="font-medium text-gray-700">联网搜索</span> —— 智能研究的「web 搜索」工具需要一个搜索 API。
+          {cfg?.configured && <span className="text-green-600 ml-1">已配置（{cfg.provider}）</span>}
         </p>
-        <label className="block text-sm font-medium text-gray-700 mb-1">搜索服务商</label>
         <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-3 bg-white"
+          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-2 bg-white"
         >
-          <option value="">（不启用 / 关闭联网搜索）</option>
+          <option value="">（不启用联网搜索）</option>
           <option value="tavily">Tavily（推荐，LLM 友好）</option>
           <option value="serper">Serper（Google 结果）</option>
           <option value="brave">Brave Search</option>
         </select>
-        <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
         <input
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder={cfg?.has_key ? `已保存：${cfg.key_masked}（留空则不修改）` : '粘贴 API Key'}
+          placeholder={cfg?.has_key ? `已保存：${cfg.key_masked}（留空不改）` : '搜索 API Key'}
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
         />
-        <div className="flex justify-end gap-2">
+
+        {/* cross-encoder 精排 */}
+        <div className="border-t pt-4">
+          <p className="text-xs text-gray-500 mb-2">
+            <span className="font-medium text-gray-700">精排（Cross-encoder Rerank）</span> —— 检索召回后，用 cross-encoder 对候选二次精排，更准。
+            API 版（Jina/Cohere/SiliconFlow/Voyage）需 key；local 版需本机装 sentence-transformers。
+            {rrCfg?.configured && <span className="text-green-600 ml-1">已配置（{rrCfg.provider}）</span>}
+          </p>
+          <select
+            value={rrProvider}
+            onChange={(e) => setRrProvider(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-2 bg-white"
+          >
+            <option value="">（不启用精排 / 保持 RRF 结果）</option>
+            <option value="siliconflow">SiliconFlow（bge-reranker-v2-m3，中文强）</option>
+            <option value="jina">Jina Reranker（多语言）</option>
+            <option value="cohere">Cohere Rerank（多语言）</option>
+            <option value="voyage">Voyage Rerank</option>
+            <option value="local">本地 sentence-transformers（需自行安装）</option>
+          </select>
+          {rrProvider && rrProvider !== 'local' && (
+            <input
+              type="password"
+              value={rrKey}
+              onChange={(e) => setRrKey(e.target.value)}
+              placeholder={rrCfg?.has_key ? `已保存：${rrCfg.key_masked}（留空不改）` : 'Rerank API Key'}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
+            />
+          )}
+          {rrProvider && (
+            <input
+              type="text"
+              value={rrModel}
+              onChange={(e) => setRrModel(e.target.value)}
+              placeholder="模型（留空用该服务商默认多语言模型）"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
+            />
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-3">
           <button onClick={onClose} className="px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-md">取消</button>
           <button onClick={save} disabled={saving} className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400">
             保存
@@ -591,7 +640,7 @@ function Generate() {
                 onClick={(e) => { e.preventDefault(); setShowSearchConfig(true) }}
                 className="ml-1 text-indigo-600 hover:underline pointer-events-auto"
               >
-                {t('generate.configSearch') === 'generate.configSearch' ? '配置联网搜索' : t('generate.configSearch')}
+                {t('generate.configSearch') === 'generate.configSearch' ? '配置检索/精排' : t('generate.configSearch')}
               </button>
             </p>
           </div>

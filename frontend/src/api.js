@@ -76,6 +76,13 @@ export const api = {
     }
   },
 
+  // 断点续传：对崩溃/中断的任务，只补跑缺失章节。之后用 reconnectStream 接回进度。
+  async resumeGeneration(historyId) {
+    const response = await fetch(`${API_BASE}/generate/${historyId}/resume`, { method: 'POST' })
+    if (!response.ok) throw new Error((await response.json()).detail || 'resume failed')
+    return response.json()
+  },
+
   async getPeers() {
     const response = await fetch(`${API_BASE}/peers`)
     return response.json()
@@ -261,6 +268,25 @@ export const api = {
     const body = { provider }
     if (api_key !== undefined) body.api_key = api_key
     const response = await fetch(`${API_BASE}/settings/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    return response.json()
+  },
+
+  // ---------------- 设置：cross-encoder 精排 ----------------
+
+  async getRerankConfig() {
+    const response = await fetch(`${API_BASE}/settings/rerank`)
+    return response.json()
+  },
+
+  async setRerankConfig({ provider, api_key, model }) {
+    const body = { provider }
+    if (api_key !== undefined) body.api_key = api_key
+    if (model !== undefined) body.model = model
+    const response = await fetch(`${API_BASE}/settings/rerank`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)

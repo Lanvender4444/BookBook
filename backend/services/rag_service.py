@@ -406,6 +406,8 @@ def index_source(source_id: str) -> dict:
 # 召回候选池大小（每路各取这么多再融合）；RRF 常数 k=60 是论文/业界默认
 CANDIDATE_K = 20
 RRF_K = 60
+# 开启 cross-encoder 精排时，先多召回 top_k * RERANK_MULT 个候选再精排截断
+RERANK_MULT = 5
 
 
 def _top_indices(scores: list[float], pool: int) -> list[int]:
@@ -476,6 +478,11 @@ def retrieve(query: str, source_ids: list[str], top_k: int = 5,
                 "match": backend,  # lancedb-hybrid / lancedb-fts / py-hybrid / py-bm25（调试用）
             }
 
+        # 若开了 cross-encoder 精排，先多召回一批候选（fetch_k），精排后再截到 top_k
+        from services import reranker
+        rr = reranker.available()
+        fetch_k = max(top_k * RERANK_MULT, CANDIDATE_K) if rr else top_k
+
         # query embedding（无 embedding 能力的厂商会返回 None）
         try:
             qres = embed_texts([query])
@@ -484,36 +491,43 @@ def retrieve(query: str, source_ids: list[str], top_k: int = 5,
             qres = None
         qvec = qres[0][0] if qres else None
 
+        results = None
+
         # ========== 路径 A：专门向量库 LanceDB（BM25 + 向量 + 内置 RRF）==========
         if vector_store.available():
             try:
                 if qvec is not None:
-                    hits = vector_store.hybrid_search(query, qvec, source_ids, top_k)
+                    hits = vector_store.hybrid_search(query, qvec, source_ids, fetch_k)
                     backend = "lancedb-hybrid"
                 else:
-                    hits = vector_store.fts_search(query, source_ids, top_k)
+                    hits = vector_store.fts_search(query, source_ids, fetch_k)
                     backend = "lancedb-fts"
                 if hits:
-                    return [_fmt(sc, *cmap[cid], backend) for cid, sc in hits if cid in cmap]
+                    results = [_fmt(sc, *cmap[cid], backend) for cid, sc in hits if cid in cmap]
             except Exception as e:
                 print(f"[RAG] lancedb retrieve failed, fallback pure-python: {e}")
 
         # ========== 路径 B：纯 Python 回落（BM25 候选 + 暴力余弦候选 + RRF）==========
-        bm25_scores = _bm25_rank(query, texts)
-        bm25_rank = _top_indices(bm25_scores, pool)
+        if results is None:
+            bm25_scores = _bm25_rank(query, texts)
+            bm25_rank = _top_indices(bm25_scores, max(fetch_k, pool))
 
-        vec_rank: list[int] = []
-        if qvec is not None and all(c.embedding is not None for c, _ in chunks):
-            cos_scores = [_cosine(qvec, _bytes_to_vec(c.embedding)) for c, _ in chunks]
-            vec_rank = _top_indices(cos_scores, pool)
+            vec_rank: list[int] = []
+            if qvec is not None and all(c.embedding is not None for c, _ in chunks):
+                cos_scores = [_cosine(qvec, _bytes_to_vec(c.embedding)) for c, _ in chunks]
+                vec_rank = _top_indices(cos_scores, max(fetch_k, pool))
 
-        if vec_rank:
-            fused = _rrf_fuse([bm25_rank, vec_rank], weights=[bm25_weight, vector_weight])
-            ranked = sorted(fused.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
-            return [_fmt(fs, *chunks[idx], "py-hybrid") for idx, fs in ranked]
+            if vec_rank:
+                fused = _rrf_fuse([bm25_rank, vec_rank], weights=[bm25_weight, vector_weight])
+                ranked = sorted(fused.items(), key=lambda kv: kv[1], reverse=True)[:fetch_k]
+                results = [_fmt(fs, *chunks[idx], "py-hybrid") for idx, fs in ranked]
+            else:
+                results = [_fmt(bm25_scores[idx], *chunks[idx], "py-bm25") for idx in bm25_rank[:fetch_k]]
 
-        # 只有 BM25 一路
-        return [_fmt(bm25_scores[idx], *chunks[idx], "py-bm25") for idx in bm25_rank[:top_k]]
+        # ========== 第三级：cross-encoder 精排（把 fetch_k 候选重排到 top_k）==========
+        if rr and results:
+            return reranker.rerank(query, results, top_k)
+        return results[:top_k]
     finally:
         db.close()
 
